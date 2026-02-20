@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dawn_shuttle"
+version = "0.1.0"
+description = "Dawn Shuttle - 基于命名空间包的子项目模板"
+readme = "README.md"
+license = "LGPL-2.1-or-later"
+requires-python = ">=3.10"
+
+[project.optional-dependencies]
+dev = [
+    "ruff==0.9.7",
+    "black==25.1.0",
+    "mypy==1.14.1",
+    "bandit==1.8.3",
+]
+
+[project.scripts]
+init-project = "init_project:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dawn_shuttle"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+show_error_codes = true
+
+[tool.ruff]
+target-version = "py310"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["dawn_shuttle"]

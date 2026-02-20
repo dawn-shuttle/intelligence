@@ -1,0 +1,109 @@
+name: Code Quality
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+permissions:
+  contents: write
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install tools
+        run: pip install "ruff==0.9.7" "black==25.1.0" "mypy==1.14.1" "bandit==1.8.3"
+
+      - name: Ensure fixlogs directory exists
+        run: mkdir -p fixlogs
+
+      # ── 1. Ruff auto-fix (lint fixes + format) ──────────────────────────────
+      - name: Ruff auto-fix
+        run: |
+          {
+            echo "=== Ruff auto-fix: $(date -u) ==="
+            echo ""
+            echo "--- ruff check --fix ---"
+            ruff check --fix . 2>&1 || true
+            echo ""
+            echo "--- ruff format ---"
+            ruff format . 2>&1 || true
+          } > fixlogs/ruff_fix.log
+          cat fixlogs/ruff_fix.log
+
+      # ── 2. Black style fix ───────────────────────────────────────────────────
+      - name: Black style fix
+        run: |
+          {
+            echo "=== Black style fix: $(date -u) ==="
+            echo ""
+            black . 2>&1 || true
+          } > fixlogs/black.log
+          cat fixlogs/black.log
+
+      # ── 3. Line length check ─────────────────────────────────────────────────
+      - name: Line length check
+        run: |
+          {
+            echo "=== Line length check (max 88 chars): $(date -u) ==="
+            echo ""
+            ruff check --select E501 . 2>&1 || true
+          } > fixlogs/linelength.log
+          cat fixlogs/linelength.log
+
+      # ── 4. Style check (full ruff lint) ─────────────────────────────────────
+      - name: Style check
+        run: |
+          {
+            echo "=== Style check (ruff lint): $(date -u) ==="
+            echo ""
+            ruff check . 2>&1 || true
+          } > fixlogs/style.log
+          cat fixlogs/style.log
+
+      # ── 5. Security audit (bandit) ───────────────────────────────────────────
+      - name: Security audit
+        run: |
+          {
+            echo "=== Security audit (bandit): $(date -u) ==="
+            echo ""
+            bandit -r . --exclude ./.git,./fixlogs 2>&1 || true
+          } > fixlogs/security.log
+          cat fixlogs/security.log
+
+      # ── 6. Type check (mypy) ─────────────────────────────────────────────────
+      - name: Type check
+        run: |
+          {
+            echo "=== Type check (mypy): $(date -u) ==="
+            echo ""
+            mypy . 2>&1 || true
+          } > fixlogs/typecheck.log
+          cat fixlogs/typecheck.log
+
+      # ── Commit auto-fixes and updated logs back to the branch ────────────────
+      # Skips push to the default branch (main/master) to respect branch
+      # protection rules. Remove the second condition if you want CI commits
+      # on the default branch too.
+      - name: Commit and push results
+        if: >-
+          github.event_name == 'push' &&
+          github.ref_name != github.event.repository.default_branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet \
+            || git commit -m "ci: apply auto-fixes and update fixlogs [skip ci]"
+          git push origin HEAD:${{ github.ref_name }} || true

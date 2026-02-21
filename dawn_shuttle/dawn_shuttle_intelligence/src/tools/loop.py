@@ -182,7 +182,9 @@ async def run_with_tools(
                         result_content = tool_result.content
                         msg_content: str
                         if isinstance(result_content, bytes):
-                            msg_content = result_content.decode("utf-8", errors="replace")
+                            msg_content = result_content.decode(
+                                "utf-8", errors="replace"
+                            )
                         elif isinstance(result_content, dict):
                             import json
                             msg_content = json.dumps(result_content, ensure_ascii=False)
@@ -194,18 +196,16 @@ async def run_with_tools(
                             tool_call_id=tool_result.tool_call_id,
                         ))
                     elif provider_type == "anthropic":
-                        # Anthropic 使用字典格式的 tool_result
-                        tool_msg: dict[str, Any] = {
-                            "type": "tool_result",
-                            "tool_use_id": tool_result.tool_call_id,
-                            "content": tool_result.content,
-                            "is_error": tool_result.is_error,
-                        }
+                        # Anthropic 格式需要特殊处理
+                        # 这里简化处理，实际应该在 converter 中处理
+                        anthropic_content = str(tool_result.content)
                         messages.append(Message(
                             role=Role.USER,
-                            content="",
+                            content=(
+                                f"Tool result for {tool_call.name}: "
+                                f"{anthropic_content}"
+                            ),
                         ))
-                        # 注意: Anthropic 格式需要特殊处理，这里简化处理
                     elif provider_type == "google":
                         # Google 需要在下一请求的 contents 中添加
                         pass

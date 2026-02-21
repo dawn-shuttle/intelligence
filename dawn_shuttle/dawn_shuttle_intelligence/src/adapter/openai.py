@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, ClassVar
 
@@ -418,113 +419,199 @@ class OpenAIProvider(BaseProvider):
         error_type: str = type(error).__name__
         error_message: str = str(error)
 
+        # 提取额外信息
+        status_code: int | None = getattr(error, "status_code", None)
+        request_id: str | None = getattr(error, "request_id", None)
+
         # OpenAI SDK 具体异常类型映射
         if "AuthenticationError" in error_type:
-            return AuthenticationError(error_message, provider=self.name)
+            return AuthenticationError(
+                error_message,
+                provider=self.name,
+                status_code=status_code,
+                request_id=request_id,
+                cause=error,
+            )
 
         if "RateLimitError" in error_type:
-            return RateLimitError(error_message, provider=self.name)
+            # 尝试提取 retry-after
+            retry_after: int | None = None
+            if hasattr(error, "response"):
+                resp = getattr(error, "response", None)
+                if resp and hasattr(resp, "headers"):
+                    ra = resp.headers.get("retry-after")
+                    if ra:
+                        with contextlib.suppress(ValueError):
+                            retry_after = int(ra)
+            return RateLimitError(
+                error_message,
+                provider=self.name,
+                status_code=status_code or 429,
+                request_id=request_id,
+                retry_after=retry_after,
+                cause=error,
+            )
 
         if "BadRequestError" in error_type:
-            return InvalidRequestError(error_message, provider=self.name)
+            return InvalidRequestError(
+                error_message,
+                provider=self.name,
+                status_code=status_code or 400,
+                request_id=request_id,
+                cause=error,
+            )
 
         if "NotFoundError" in error_type:
-            return ModelNotFoundError(error_message, provider=self.name)
+            return ModelNotFoundError(
+                error_message,
+                provider=self.name,
+                status_code=status_code or 404,
+                request_id=request_id,
+                cause=error,
+            )
 
-        if "APIStatusError" in error_type:
-            # 根据状态码映射
-            status_code = getattr(error, "status_code", None)
-            if status_code:
-                return self._map_status_code(status_code, error_message)
+        if "APIStatusError" in error_type and status_code:
+            return self._map_status_code(status_code, error_message, error)
 
         # HTTP 状态码映射(从错误消息中提取)
         if "401" in error_message:
-            return AuthenticationError(error_message, provider=self.name)
+            return AuthenticationError(
+                error_message,
+                provider=self.name,
+                status_code=401,
+                cause=error,
+            )
 
         if "403" in error_message:
             return AuthenticationError(
                 f"Access forbidden: {error_message}",
                 provider=self.name,
+                status_code=403,
+                cause=error,
             )
 
         if "429" in error_message:
-            return RateLimitError(error_message, provider=self.name)
+            return RateLimitError(
+                error_message,
+                provider=self.name,
+                status_code=429,
+                cause=error,
+            )
 
         if "400" in error_message:
-            return InvalidRequestError(error_message, provider=self.name)
+            return InvalidRequestError(
+                error_message,
+                provider=self.name,
+                status_code=400,
+                cause=error,
+            )
 
         if "404" in error_message:
-            return ModelNotFoundError(error_message, provider=self.name)
+            return ModelNotFoundError(
+                error_message,
+                provider=self.name,
+                status_code=404,
+                cause=error,
+            )
 
         if "500" in error_message or "Internal" in error_type:
-            return InternalServerError(error_message, provider=self.name)
+            return InternalServerError(
+                error_message,
+                provider=self.name,
+                status_code=500,
+                request_id=request_id,
+                cause=error,
+            )
 
         if "503" in error_message or "Service Unavailable" in error_message:
-            return ProviderNotAvailableError(error_message, provider=self.name)
+            return ProviderNotAvailableError(
+                error_message,
+                provider=self.name,
+                status_code=503,
+                cause=error,
+            )
 
         if "502" in error_message or "Bad Gateway" in error_message:
-            return ProviderNotAvailableError(error_message, provider=self.name)
+            return ProviderNotAvailableError(
+                error_message,
+                provider=self.name,
+                status_code=502,
+                cause=error,
+            )
 
         # 内容过滤
         if "ContentFilter" in error_message:
-            return ContentFilterError(error_message, provider=self.name)
+            return ContentFilterError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
 
         # 超时
         if "Timeout" in error_type or "timeout" in error_message.lower():
-            return TimeoutError(error_message, provider=self.name)
+            return TimeoutError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
 
         # 连接错误
         if "Connection" in error_type or "connect" in error_message.lower():
-            return ConnectionError(error_message, provider=self.name)
+            return ConnectionError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
 
         # 配额错误
         if "quota" in error_message.lower() or "insufficient_quota" in error_message:
-            return QuotaExceededError(error_message, provider=self.name)
+            return QuotaExceededError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
 
-        # 默认返回服务器错误(不使用通用 AIError)
+        # 默认返回服务器错误
         return InternalServerError(
             f"Unexpected error: {error_type}: {error_message}",
             provider=self.name,
-            original_error=error_type,
-        )
+            status_code=status_code,
+            request_id=request_id,
+            cause=error,
+        ).with_context(original_type=error_type)
 
-    def _map_status_code(self, status_code: int, message: str) -> AIError:
+    def _map_status_code(
+        self, status_code: int, message: str, cause: Exception | None = None
+    ) -> AIError:
         """根据 HTTP 状态码映射到具体错误类型。
 
         Args:
             status_code: HTTP 状态码。
             message: 错误消息。
+            cause: 原始异常。
 
         Returns:
             具体的错误类型实例。
         """
-        if status_code == 400:
-            return InvalidRequestError(message, provider=self.name)
-        if status_code == 401:
-            return AuthenticationError(message, provider=self.name)
-        if status_code == 403:
-            return AuthenticationError(
-                f"Access forbidden: {message}",
-                provider=self.name,
-            )
-        if status_code == 404:
-            return ModelNotFoundError(message, provider=self.name)
-        if status_code == 429:
-            return RateLimitError(message, provider=self.name)
-        if status_code == 500:
-            return InternalServerError(message, provider=self.name)
-        if status_code == 502:
-            return ProviderNotAvailableError(message, provider=self.name)
-        if status_code == 503:
-            return ProviderNotAvailableError(message, provider=self.name)
-        if status_code == 504:
-            return TimeoutError(message, provider=self.name)
+        error_map: dict[int, type[AIError]] = {
+            400: InvalidRequestError,
+            401: AuthenticationError,
+            403: AuthenticationError,
+            404: ModelNotFoundError,
+            429: RateLimitError,
+            500: InternalServerError,
+            502: ProviderNotAvailableError,
+            503: ProviderNotAvailableError,
+            504: TimeoutError,
+        }
 
-        # 其他状态码返回服务器错误
-        return InternalServerError(
-            f"HTTP {status_code}: {message}",
+        error_class = error_map.get(status_code, InternalServerError)
+
+        return error_class(
+            message,
             provider=self.name,
             status_code=status_code,
+            cause=cause,
         )
 
 

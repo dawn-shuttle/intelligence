@@ -19,7 +19,7 @@ class AIError(Exception):
 
 
 class AuthenticationError(AIError):
-    """认证失败（API Key 无效或过期）。"""
+    """认证失败(API Key 无效或过期)。"""
 
     pass
 

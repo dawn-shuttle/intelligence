@@ -1,6 +1,6 @@
 """Core 模块 - 核心抽象和类型定义。"""
 
-from .config import GenerateConfig
+from .config import GenerateConfig, ResponseFormat, StopSequences, ToolChoice
 from .error import (
     AIError,
     AuthenticationError,
@@ -18,8 +18,11 @@ from .provider import BaseProvider
 from .response import GenerateResponse, StreamChunk, Usage
 from .types import (
     ContentPart,
+    FinishReason,
     ImageContent,
     Message,
+    MessageDict,
+    Messages,
     Role,
     TextContent,
     ToolCall,
@@ -27,34 +30,34 @@ from .types import (
 )
 
 __all__ = [
-    # 类型定义
-    "Message",
-    "Role",
-    "ContentPart",
-    "TextContent",
-    "ImageContent",
-    "ToolCall",
-    "ToolResult",
-    # 配置
-    "GenerateConfig",
-    # 响应
-    "GenerateResponse",
-    "StreamChunk",
-    "Usage",
-    # Provider
-    "BaseProvider",
-    # 错误
     "AIError",
     "AuthenticationError",
-    "RateLimitError",
-    "ModelNotFoundError",
-    "InvalidRequestError",
-    "ContentFilterError",
-    "QuotaExceededError",
-    "TimeoutError",
+    "BaseProvider",
     "ConnectionError",
+    "ContentFilterError",
+    "ContentPart",
+    "FinishReason",
+    "GenerateConfig",
+    "GenerateResponse",
+    "ImageContent",
+    "InvalidRequestError",
+    "Message",
+    "MessageDict",
+    "Messages",
+    "ModelNotFoundError",
     "ProviderNotAvailableError",
-    # 入口函数
+    "QuotaExceededError",
+    "RateLimitError",
+    "ResponseFormat",
+    "Role",
+    "StopSequences",
+    "StreamChunk",
+    "TextContent",
+    "TimeoutError",
+    "ToolCall",
+    "ToolChoice",
+    "ToolResult",
+    "Usage",
     "generate_text",
     "stream_text",
 ]

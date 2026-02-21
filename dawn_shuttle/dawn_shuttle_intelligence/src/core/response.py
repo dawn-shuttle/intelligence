@@ -20,13 +20,13 @@ class GenerateResponse:
     # 生成的文本内容
     text: str = ""
 
-    # 工具调用（如有）
+    # 工具调用(如有)
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
 
-    # 结束原因：stop, length, tool_calls, content_filter 等
+    # 结束原因: stop, length, tool_calls, content_filter 等
     finish_reason: str | None = None
 
-    # 原始响应（提供商特定）
+    # 原始响应(提供商特定)
     raw: Any = None
 
     # Token 使用统计
@@ -35,7 +35,7 @@ class GenerateResponse:
     # 模型标识
     model: str | None = None
 
-    # 请求 ID（用于追踪）
+    # 请求 ID(用于追踪)
     request_id: str | None = None
 
     @property
@@ -81,5 +81,5 @@ class StreamChunk:
     # 结束原因
     finish_reason: str | None = None
 
-    # 使用统计（通常在最后一个 chunk）
+    # 使用统计(通常在最后一个 chunk)
     usage: Usage | None = None

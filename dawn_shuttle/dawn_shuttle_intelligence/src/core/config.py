@@ -92,10 +92,10 @@ class GenerateConfig:
         if self.max_tokens is not None:
             result["max_tokens"] = self.max_tokens
         if self.stop is not None:
-            if isinstance(self.stop, Sequence):
-                result["stop"] = list(self.stop)
-            else:
+            if isinstance(self.stop, str):
                 result["stop"] = self.stop
+            else:
+                result["stop"] = list(self.stop)
 
         # 惩罚参数
         if self.frequency_penalty is not None:

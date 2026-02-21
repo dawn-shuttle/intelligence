@@ -439,25 +439,47 @@ class GoogleProvider(BaseProvider):
                 provider=self.name,
             )
         if "Unavailable" in error_type or "503" in error_message:
-            return ProviderNotAvailableError(error_message, provider=self.name)
+            return ProviderNotAvailableError(
+                error_message,
+                provider=self.name,
+                status_code=503,
+                cause=error,
+            )
         if "Internal" in error_type or "500" in error_message:
-            return InternalServerError(error_message, provider=self.name)
+            return InternalServerError(
+                error_message,
+                provider=self.name,
+                status_code=500,
+                cause=error,
+            )
         if "DeadlineExceeded" in error_type or "timeout" in error_message_lower:
-            return TimeoutError(error_message, provider=self.name)
+            return TimeoutError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
         if (
             "Safety" in error_type
             or "Blocked" in error_message
             or "safety" in error_message_lower
         ):
-            return ContentFilterError(error_message, provider=self.name)
+            return ContentFilterError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
         if "quota" in error_message_lower or "exhausted" in error_message_lower:
-            return QuotaExceededError(error_message, provider=self.name)
+            return QuotaExceededError(
+                error_message,
+                provider=self.name,
+                cause=error,
+            )
 
         return InternalServerError(
             f"Unexpected error: {error_type}: {error_message}",
             provider=self.name,
-            original_error=error_type,
-        )
+            cause=error,
+        ).with_context(original_type=error_type)
 
 
 # 便捷别名

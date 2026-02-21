@@ -314,28 +314,27 @@ def skill(
             return results.content
     """
     def decorator(func: Callable) -> Skill:
-        # 创建动态 Skill 类
+        # 闭包捕获外部变量
+        _skill_name = name or func.__name__
+        _skill_description = description or func.__doc__ or ""
+        _skill_tools = tools or []
+        _skill_parameters = parameters or []
+
         @dataclass
         class FunctionSkill(Skill):
             _func: Callable = field(default=func, repr=False)
-            _name: str = name or func.__name__
-            _description: str = description or func.__doc__ or ""
-            _tools: list[Tool] = field(default_factory=lambda: tools or [])
-            _parameters: list[ToolParameter] = field(
-                default_factory=lambda: parameters or []
-            )
 
             @property
             def name(self) -> str:  # type: ignore
-                return self._name
+                return _skill_name
 
             @property
             def description(self) -> str:  # type: ignore
-                return self._description
+                return _skill_description
 
             @property
             def tools(self) -> list[Tool]:  # type: ignore
-                return self._tools
+                return _skill_tools
 
             async def run(self, context: SkillContext, **kwargs: Any) -> Any:
                 return await self._func(context, **kwargs)

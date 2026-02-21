@@ -99,9 +99,9 @@ class Tool(ABC):
         """
         return FunctionTool(
             func=func,
-            name=name,
-            description=description,
-            parameters=parameters,
+            _name=name,
+            _description=description,
+            _parameters=parameters,
         )
 
     @classmethod

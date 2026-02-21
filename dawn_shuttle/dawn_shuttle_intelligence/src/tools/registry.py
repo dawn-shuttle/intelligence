@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from typing import Any
 
 from .tool import FunctionTool, Tool
 from .types import ToolDefinition, ToolParameter
@@ -44,7 +45,7 @@ class ToolRegistry:
 
     def register(
         self,
-        tool: Tool | Callable,
+        tool: Tool | Callable[..., Any],
         *,
         name: str | None = None,
         description: str | None = None,
@@ -208,7 +209,7 @@ def get_default_registry() -> ToolRegistry:
 
 
 def register(
-    tool: Tool | Callable,
+    tool: Tool | Callable[..., Any],
     *,
     name: str | None = None,
     description: str | None = None,

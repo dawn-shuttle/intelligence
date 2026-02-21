@@ -32,6 +32,17 @@ warn_unused_configs = true
 warn_unused_ignores = true
 show_error_codes = true
 
+[[tool.mypy.overrides]]
+module = [
+    "anthropic",
+    "anthropic.*",
+    "google",
+    "google.*",
+    "openai",
+    "openai.*",
+]
+ignore_missing_imports = true
+
 [tool.ruff]
 target-version = "py310"
 line-length = 88

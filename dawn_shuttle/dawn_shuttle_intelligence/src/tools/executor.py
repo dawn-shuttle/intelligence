@@ -246,6 +246,13 @@ async def execute_tool_call(
     target_registry = registry or get_default_registry()
     executor = ToolExecutor(registry=target_registry)
     execution = await executor.execute(tool_call, **kwargs)
+    if execution.result is None:
+        return ToolResult(
+            tool_call_id=tool_call.id,
+            content="",
+            is_error=True,
+            error_message="Execution returned no result",
+        )
     return execution.result
 
 
@@ -269,4 +276,15 @@ async def execute_tool_calls(
     target_registry = registry or get_default_registry()
     executor = ToolExecutor(registry=target_registry)
     executions = await executor.execute_batch(tool_calls, parallel=parallel)
-    return [e.result for e in executions]
+    results: list[ToolResult] = []
+    for e in executions:
+        if e.result is not None:
+            results.append(e.result)
+        else:
+            results.append(ToolResult(
+                tool_call_id=e.tool_call.id,
+                content="",
+                is_error=True,
+                error_message="Execution returned no result",
+            ))
+    return results

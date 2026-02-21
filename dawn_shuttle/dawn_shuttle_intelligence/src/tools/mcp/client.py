@@ -84,7 +84,7 @@ class MCPClient:
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                env={**dict.__class__.__bases__[0](), **self.env},
+                env=self.env if self.env else None,
             )
 
             self._reader = self._process.stdout
@@ -213,13 +213,13 @@ class MCPClient:
             content="\n".join(text_parts) if text_parts else str(result),
         )
 
-    def to_tools(self) -> list[Tool]:
+    def to_tools(self) -> list[MCPToolWrapper]:
         """将 MCP 工具转换为 Tool 对象。
 
         Returns:
-            list[Tool]: Tool 对象列表。
+            list[MCPToolWrapper]: MCPToolWrapper 对象列表。
         """
-        tools = []
+        tools: list[MCPToolWrapper] = []
 
         for mcp_tool in self._tools:
             tool = MCPToolWrapper(client=self, definition=mcp_tool)
@@ -288,8 +288,8 @@ class MCPClient:
 class MCPToolWrapper(Tool):
     """MCP 工具包装器 - 将 MCP 工具包装为 Tool 对象。"""
 
-    client: MCPClient = field(default=None)
-    definition: MCPToolDefinition = field(default=None)
+    client: MCPClient | None = field(default=None)
+    definition: MCPToolDefinition | None = field(default=None)
 
     @property
     def name(self) -> str:

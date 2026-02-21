@@ -80,7 +80,7 @@ class Tool(ABC):
     @classmethod
     def from_function(
         cls,
-        func: Callable,
+        func: Callable[..., Any],
         *,
         name: str | None = None,
         description: str | None = None,
@@ -108,7 +108,7 @@ class Tool(ABC):
     def from_dict(
         cls,
         data: dict[str, Any],
-        executor: Callable | None = None,
+        executor: Callable[..., Any] | None = None,
     ) -> DictTool:
         """从字典创建工具。
 
@@ -126,7 +126,7 @@ class Tool(ABC):
 class FunctionTool(Tool):
     """函数工具 - 从函数创建的工具。"""
 
-    func: Callable | None = field(default=None)
+    func: Callable[..., Any] | None = field(default=None)
     _name: str | None = field(default=None)
     _description: str | None = field(default=None)
     _parameters: list[ToolParameter] | None = field(default=None)
@@ -205,23 +205,24 @@ class FunctionTool(Tool):
         if self._parameters is not None:
             return self._parameters
 
-        if self._schema is None:
+        if self._schema is None and self.func is not None:
             self._schema = extract_function_schema(self.func)
 
         params: list[ToolParameter] = []
-        func_schema = self._schema.get("function", {})
-        params_schema = func_schema.get("parameters", {})
-        properties = params_schema.get("properties", {})
-        required = params_schema.get("required", [])
+        if self._schema is not None:
+            func_schema = self._schema.get("function", {})
+            params_schema = func_schema.get("parameters", {})
+            properties = params_schema.get("properties", {})
+            required = params_schema.get("required", [])
 
-        for name, prop in properties.items():
-            params.append(ToolParameter(
-                name=name,
-                type=prop.get("type", "string"),
-                description=prop.get("description"),
-                required=name in required,
-                enum=prop.get("enum"),
-            ))
+            for name, prop in properties.items():
+                params.append(ToolParameter(
+                    name=name,
+                    type=prop.get("type", "string"),
+                    description=prop.get("description"),
+                    required=name in required,
+                    enum=prop.get("enum"),
+                ))
 
         return params
 
@@ -231,11 +232,11 @@ class DictTool(Tool):
     """字典工具 - 从字典定义创建的工具。"""
 
     data: dict[str, Any] = field(default_factory=dict)
-    executor: Callable | None = field(default=None)
+    executor: Callable[..., Any] | None = field(default=None)
 
     @property
     def name(self) -> str:
-        return self.data.get("name", "")
+        return str(self.data.get("name", ""))
 
     @name.setter
     def name(self, value: str) -> None:
@@ -243,7 +244,7 @@ class DictTool(Tool):
 
     @property
     def description(self) -> str:
-        return self.data.get("description", "")
+        return str(self.data.get("description", ""))
 
     @description.setter
     def description(self, value: str) -> None:
@@ -304,12 +305,12 @@ class DictTool(Tool):
 
 
 def tool(
-    func: Callable | None = None,
+    func: Callable[..., Any] | None = None,
     *,
     name: str | None = None,
     description: str | None = None,
     parameters: list[ToolParameter] | None = None,
-) -> Callable:
+) -> Callable[..., Any] | FunctionTool:
     """装饰器: 将函数转换为工具。
 
     可以作为装饰器使用:
@@ -329,7 +330,7 @@ def tool(
         parameters: 参数列表。
 
     Returns:
-        Callable: 工具对象或装饰器函数。
+        Callable | FunctionTool: 工具对象或装饰器函数。
     """
     def decorator(fn: Callable[..., Any]) -> FunctionTool:
         return FunctionTool(

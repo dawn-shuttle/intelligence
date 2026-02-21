@@ -9,7 +9,7 @@ from typing import Any, ClassVar
 
 from ...core.provider import BaseProvider
 from ...core.response import GenerateResponse
-from ...core.types import Message
+from ...core.types import Message, Role
 from ..executor import ToolExecutor
 from ..registry import ToolRegistry
 from ..tool import Tool
@@ -68,6 +68,13 @@ class SkillContext:
         )
 
         execution = await self.executor.execute(tool_call)
+        if execution.result is None:
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                content="",
+                is_error=True,
+                error_message="Tool execution returned no result",
+            )
         return execution.result
 
     async def generate(
@@ -95,9 +102,9 @@ class SkillContext:
         messages = []
 
         if system:
-            messages.append(Message(role="system", content=system))
+            messages.append(Message(role=Role.SYSTEM, content=system))
 
-        messages.append(Message(role="user", content=prompt))
+        messages.append(Message(role=Role.USER, content=prompt))
 
         config = GenerateConfig(model=model)
 
@@ -135,9 +142,9 @@ class SkillContext:
         messages = []
 
         if system:
-            messages.append(Message(role="system", content=system))
+            messages.append(Message(role=Role.SYSTEM, content=system))
 
-        messages.append(Message(role="user", content=prompt))
+        messages.append(Message(role=Role.USER, content=prompt))
 
         config = GenerateConfig(model=model)
 
@@ -220,7 +227,7 @@ class Skill(ABC):
 class SkillToolWrapper(Tool):
     """Skill 工具包装器 - 将 Skill 包装为 Tool 对象。"""
 
-    skill: Skill = field(default=None)
+    skill: Skill | None = field(default=None)
 
     @property
     def name(self) -> str:
@@ -228,8 +235,8 @@ class SkillToolWrapper(Tool):
 
     @name.setter
     def name(self, value: str) -> None:
-        if self.skill:
-            self.skill.name = value
+        # Skill.name 是类变量，不能通过实例设置
+        pass
 
     @property
     def description(self) -> str:
@@ -237,8 +244,8 @@ class SkillToolWrapper(Tool):
 
     @description.setter
     def description(self, value: str) -> None:
-        if self.skill:
-            self.skill.description = value
+        # Skill.description 是类变量，不能通过实例设置
+        pass
 
     async def execute(
         self,
@@ -295,7 +302,7 @@ def skill(
     description: str | None = None,
     tools: list[Tool] | None = None,
     parameters: list[ToolParameter] | None = None,
-) -> Callable[[Callable], Skill]:
+) -> Callable[[Callable[..., Any]], Skill]:
     """装饰器: 将函数转换为技能。
 
     Args:
@@ -313,7 +320,7 @@ def skill(
             results = await context.call_tool("search", query=topic)
             return results.content
     """
-    def decorator(func: Callable) -> Skill:
+    def decorator(func: Callable[..., Any]) -> Skill:
         # 闭包捕获外部变量
         _skill_name = name or func.__name__
         _skill_description = description or func.__doc__ or ""
@@ -322,7 +329,7 @@ def skill(
 
         @dataclass
         class FunctionSkill(Skill):
-            _func: Callable = field(default=func, repr=False)
+            _func: Callable[..., Any] = field(default=func, repr=False)
 
             @property
             def name(self) -> str:  # type: ignore

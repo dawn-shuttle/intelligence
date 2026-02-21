@@ -109,7 +109,7 @@ def python_type_to_json_schema(python_type: Any) -> dict[str, Any]:
     return {"type": "object"}
 
 
-def _infer_literal_type(args: tuple) -> str:
+def _infer_literal_type(args: tuple[Any, ...]) -> str:
     """推断 Literal 的类型。"""
     if not args:
         return "string"
@@ -129,7 +129,7 @@ def _infer_literal_type(args: tuple) -> str:
 
 
 def extract_function_schema(
-    func: Callable,
+    func: Callable[..., Any],
     *,
     name: str | None = None,
     description: str | None = None,
@@ -205,7 +205,7 @@ def extract_function_schema(
     }
 
 
-def _extract_docstring(func: Callable) -> str:
+def _extract_docstring(func: Callable[..., Any]) -> str:
     """提取函数 docstring 作为描述。"""
     doc = func.__doc__
     if not doc:
@@ -265,7 +265,9 @@ def validate_arguments(
     return len(errors) == 0, errors
 
 
-def _validate_type(value: Any, expected_type: str | None, schema: dict) -> bool:
+def _validate_type(
+    value: Any, expected_type: str | None, schema: dict[str, Any]
+) -> bool:
     """验证单个值的类型。"""
     if expected_type is None:
         return True

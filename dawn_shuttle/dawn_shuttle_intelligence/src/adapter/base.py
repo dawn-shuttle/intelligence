@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from typing import Any
 
 from ..core.types import (
@@ -10,6 +11,43 @@ from ..core.types import (
     Role,
     TextContent,
 )
+
+
+def extract_error_info(error: Exception) -> dict[str, Any]:
+    """从异常中提取错误信息。
+
+    Args:
+        error: 异常对象。
+
+    Returns:
+        dict[str, Any]: 错误信息字典。
+    """
+    info: dict[str, Any] = {
+        "type": type(error).__name__,
+        "message": str(error),
+        "status_code": None,
+        "request_id": None,
+        "retry_after": None,
+    }
+
+    # 提取状态码
+    if hasattr(error, "status_code"):
+        info["status_code"] = error.status_code
+
+    # 提取请求 ID
+    if hasattr(error, "request_id"):
+        info["request_id"] = error.request_id
+
+    # 提取 retry-after
+    if hasattr(error, "response"):
+        resp = getattr(error, "response", None)
+        if resp and hasattr(resp, "headers"):
+            ra = resp.headers.get("retry-after")
+            if ra:
+                with contextlib.suppress(ValueError):
+                    info["retry_after"] = int(ra)
+
+    return info
 
 
 def message_to_openai_format(message: Message) -> dict[str, Any]:
@@ -35,17 +73,23 @@ def message_to_openai_format(message: Message) -> dict[str, Any]:
                     parts.append({"type": "text", "text": part.text})
                 elif isinstance(part, ImageContent):
                     if part.image.startswith("http"):
-                        parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": part.image}
-                        })
+                        parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": part.image},
+                            }
+                        )
                     else:
                         # base64
                         mime = part.mime_type or "image/png"
-                        parts.append({
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime};base64,{part.image}"}
-                        })
+                        parts.append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:{mime};base64,{part.image}"
+                                },
+                            }
+                        )
             result["content"] = parts
 
     # 处理 name
@@ -60,9 +104,12 @@ def message_to_openai_format(message: Message) -> dict[str, Any]:
                 "type": "function",
                 "function": {
                     "name": tc.name,
-                    "arguments": tc.arguments if isinstance(tc.arguments, str)
-                    else __import__("json").dumps(tc.arguments)
-                }
+                    "arguments": (
+                        tc.arguments
+                        if isinstance(tc.arguments, str)
+                        else __import__("json").dumps(tc.arguments)
+                    ),
+                },
             }
             for tc in message.tool_calls
         ]

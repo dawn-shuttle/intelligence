@@ -9,11 +9,9 @@ import pytest
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools import (
     Tool,
     ToolCall,
-    ToolExecutionError,
     ToolExecutor,
     ToolRegistry,
     ToolResult,
-    ToolTimeoutError,
     tool,
 )
 

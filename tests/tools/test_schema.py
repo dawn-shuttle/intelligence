@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Optional
-
-import pytest
+from typing import Annotated, Literal
 
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools.schema import (
     extract_function_schema,
@@ -42,7 +40,7 @@ class TestPythonTypeToJsonSchema:
 
     def test_optional_type(self) -> None:
         """测试 Optional 类型。"""
-        schema = python_type_to_json_schema(Optional[str])
+        schema = python_type_to_json_schema(str | None)
         assert schema["type"] == "string"
         assert schema["nullable"] is True
 
@@ -164,7 +162,7 @@ class TestValidateArguments:
             "properties": {"count": {"type": "integer"}},
         }
 
-        valid, errors = validate_arguments({"count": 42}, schema)
+        valid, _ = validate_arguments({"count": 42}, schema)
 
         assert valid is True
 
@@ -188,7 +186,7 @@ class TestValidateArguments:
             "properties": {"count": {"type": "integer"}},
         }
 
-        valid, errors = validate_arguments({"count": "not a number"}, schema)
+        valid, _ = validate_arguments({"count": "not a number"}, schema)
 
         assert valid is False
 
@@ -201,7 +199,7 @@ class TestValidateArguments:
             },
         }
 
-        valid, errors = validate_arguments({"status": "active"}, schema)
+        valid, _ = validate_arguments({"status": "active"}, schema)
 
         assert valid is True
 
@@ -214,7 +212,7 @@ class TestValidateArguments:
             },
         }
 
-        valid, errors = validate_arguments({"status": "unknown"}, schema)
+        valid, _ = validate_arguments({"status": "unknown"}, schema)
 
         assert valid is False
 
@@ -227,7 +225,7 @@ class TestValidateArguments:
             },
         }
 
-        valid, errors = validate_arguments({"value": None}, schema)
+        valid, _ = validate_arguments({"value": None}, schema)
 
         assert valid is True
 

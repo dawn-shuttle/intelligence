@@ -5,13 +5,11 @@ from __future__ import annotations
 import pytest
 
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools import (
-    ToolCall,
     ToolDefinition,
     ToolParameter,
     ToolResult,
 )
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools.converter import (
-    ProviderType,
     ToolConverter,
     convert_tool_call,
     convert_tool_result,
@@ -96,7 +94,7 @@ class TestToolConverter:
         assert call.arguments == {"city": "Beijing"}
 
     def test_call_from_openai_with_dict_args(self) -> None:
-        """测试从 OpenAI 格式解析（参数已为字典）。"""
+        """测试从 OpenAI 格式解析(参数已为字典)。"""
         data = {
             "id": "call_456",
             "function": {
@@ -142,7 +140,9 @@ class TestToolConverter:
             content={"temp": 25},
         )
 
-        msg = ToolConverter.result_to_provider(result, "google", tool_name="get_weather")
+        msg = ToolConverter.result_to_provider(
+            result, "google", tool_name="get_weather"
+        )
 
         assert "function_response" in msg
         assert msg["function_response"]["name"] == "get_weather"
@@ -156,7 +156,9 @@ class TestToolConverter:
             error_message="City not found",
         )
 
-        msg = ToolConverter.result_to_provider(result, "google", tool_name="get_weather")
+        msg = ToolConverter.result_to_provider(
+            result, "google", tool_name="get_weather"
+        )
 
         assert "error" in msg["function_response"]["response"]
 

@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools.types import (
-    JSONSchemaType,
     ToolCall,
     ToolDefinition,
     ToolExecution,

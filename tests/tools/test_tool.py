@@ -56,7 +56,10 @@ class TestToolDecorator:
     def test_basic_decorator(self) -> None:
         """测试基本装饰器。"""
         assert get_weather.name == "get_weather"
-        assert "天气" in get_weather.description or "weather" in get_weather.description.lower()
+        assert (
+            "天气" in get_weather.description
+            or "weather" in get_weather.description.lower()
+        )
 
     def test_decorator_with_options(self) -> None:
         """测试带选项的装饰器。"""

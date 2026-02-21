@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import types
 from collections.abc import Callable
 from typing import (
     Annotated,
@@ -50,8 +51,8 @@ def python_type_to_json_schema(python_type: Any) -> dict[str, Any]:
             "enum": list(args),
         }
 
-    # 处理 Union (包括 Optional)
-    if origin is Union:
+    # 处理 Union (包括 Optional) 和 types.UnionType (Python 3.10+ 的 X | Y 语法)
+    if origin is Union or origin is types.UnionType:
         args = get_args(python_type)
         # Optional[T] = Union[T, None]
         non_none_args = [a for a in args if a is not type(None)]

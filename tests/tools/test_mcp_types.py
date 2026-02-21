@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools.mcp.types import (
+    MCP_METHOD_INITIALIZE,
+    MCP_METHOD_TOOLS_LIST,
     MCPPrompt,
     MCPRequest,
     MCPResource,
     MCPResponse,
     MCPServerInfo,
     MCPToolDefinition,
-    MCP_METHOD_INITIALIZE,
-    MCP_METHOD_TOOLS_LIST,
 )
 
 

@@ -93,6 +93,62 @@ class TestGenerateConfig:
         result = config.to_dict()
         assert result["stop"] == ["END", "STOP"]
 
+    def test_to_dict_with_top_k(self) -> None:
+        """测试 top_k 参数。"""
+        config = GenerateConfig(model="gpt-4", top_k=50)
+        result = config.to_dict()
+        assert result["top_k"] == 50
+
+    def test_to_dict_with_frequency_penalty(self) -> None:
+        """测试 frequency_penalty 参数。"""
+        config = GenerateConfig(model="gpt-4", frequency_penalty=0.5)
+        result = config.to_dict()
+        assert result["frequency_penalty"] == 0.5
+
+    def test_to_dict_with_presence_penalty(self) -> None:
+        """测试 presence_penalty 参数。"""
+        config = GenerateConfig(model="gpt-4", presence_penalty=0.3)
+        result = config.to_dict()
+        assert result["presence_penalty"] == 0.3
+
+    def test_to_dict_with_seed(self) -> None:
+        """测试 seed 参数。"""
+        config = GenerateConfig(model="gpt-4", seed=42)
+        result = config.to_dict()
+        assert result["seed"] == 42
+
+    def test_to_dict_with_stream(self) -> None:
+        """测试 stream 参数。"""
+        config = GenerateConfig(model="gpt-4", stream=True)
+        result = config.to_dict()
+        assert result["stream"] is True
+
+    def test_to_dict_with_tool_choice(self) -> None:
+        """测试 tool_choice 参数。"""
+        config = GenerateConfig(
+            model="gpt-4",
+            tools=[{"type": "function"}],
+            tool_choice="auto",
+        )
+        result = config.to_dict()
+        assert result["tool_choice"] == "auto"
+
+    def test_to_dict_with_response_format(self) -> None:
+        """测试 response_format 参数。"""
+        config = GenerateConfig(
+            model="gpt-4",
+            response_format={"type": "json_object"},
+        )
+        result = config.to_dict()
+        assert result["response_format"] == {"type": "json_object"}
+
+    def test_to_dict_empty_model(self) -> None:
+        """测试空模型不包含在结果中。"""
+        config = GenerateConfig()
+        result = config.to_dict()
+        # 空模型也会被包含，因为是空字符串检查
+        assert result == {}
+
 
 class TestTypeAliases:
     """测试类型别名。"""

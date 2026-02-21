@@ -106,6 +106,8 @@ class GenerateConfig:
         # 其他
         if self.seed is not None:
             result["seed"] = self.seed
+        if self.stream:
+            result["stream"] = True
         if self.tools is not None:
             result["tools"] = self.tools
         if self.tool_choice is not None:

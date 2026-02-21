@@ -4,6 +4,11 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.anthropic import AnthropicProvider
+from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.base import (
+    handle_anthropic_error,
+    validate_config,
+    validate_messages,
+)
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.config import GenerateConfig
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.types import (
@@ -57,7 +62,7 @@ class TestAnthropicProvider:
         config = GenerateConfig()
 
         with pytest.raises(ConfigurationError, match="Model name is required"):
-            provider._validate_config(config)
+            validate_config(config, provider.name, temp_max=1.0)
 
     def test_validate_config_invalid_temperature(self) -> None:
         """测试无效温度验证(Anthropic 温度范围是 0-1)。"""
@@ -65,14 +70,14 @@ class TestAnthropicProvider:
         config = GenerateConfig(model="claude-3-5-sonnet-latest", temperature=1.5)
 
         with pytest.raises(ConfigurationError, match="Temperature must be between"):
-            provider._validate_config(config)
+            validate_config(config, provider.name, temp_max=1.0)
 
     def test_validate_messages_empty(self) -> None:
         """测试空消息列表验证。"""
         provider = AnthropicProvider()
 
         with pytest.raises(ConfigurationError, match="Messages list cannot be empty"):
-            provider._validate_messages([])
+            validate_messages([], provider.name)
 
     def test_convert_message_user(self) -> None:
         """测试转换用户消息。"""
@@ -222,7 +227,7 @@ class TestAnthropicProvider:
         provider = AnthropicProvider()
 
         error = Exception("401 Unauthorized")
-        result = provider._handle_error(error)
+        result = handle_anthropic_error(error, provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
         assert isinstance(result, AuthenticationError)
@@ -232,25 +237,27 @@ class TestAnthropicProvider:
         provider = AnthropicProvider()
 
         error = Exception("Service overloaded")
-        result = provider._handle_error(error)
+        result = handle_anthropic_error(error, provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ProviderNotAvailableError
         assert isinstance(result, ProviderNotAvailableError)
 
     def test_map_status_code_400(self) -> None:
         """测试状态码 400 映射。"""
+        from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.base import map_status_code_to_error
         provider = AnthropicProvider()
 
-        result = provider._map_status_code(400, "Bad request")
+        result = map_status_code_to_error(400, "Bad request", provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import InvalidRequestError
         assert isinstance(result, InvalidRequestError)
 
     def test_map_status_code_403(self) -> None:
         """测试状态码 403 映射。"""
+        from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.base import map_status_code_to_error
         provider = AnthropicProvider()
 
-        result = provider._map_status_code(403, "Forbidden")
+        result = map_status_code_to_error(403, "Forbidden", provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
         assert isinstance(result, AuthenticationError)

@@ -6,21 +6,16 @@ import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from .base import (
+    handle_anthropic_error,
+    validate_config,
+    validate_messages,
+)
 from ..core.config import GenerateConfig
 from ..core.error import (
     AIError,
-    AuthenticationError,
     ConfigurationError,
-    ConnectionError,
-    ContentFilterError,
-    InternalServerError,
-    InvalidRequestError,
-    ModelNotFoundError,
-    ProviderNotAvailableError,
-    QuotaExceededError,
-    RateLimitError,
     ResponseParseError,
-    TimeoutError,
 )
 from ..core.provider import BaseProvider
 from ..core.response import GenerateResponse, StreamChunk, Usage
@@ -98,48 +93,14 @@ class AnthropicProvider(BaseProvider):
         """获取支持的模型列表。"""
         return self.SUPPORTED_MODELS.copy()
 
-    def _validate_config(self, config: GenerateConfig) -> None:
-        """验证配置参数。"""
-        if not config.model:
-            raise ConfigurationError(
-                "Model name is required",
-                provider=self.name,
-            )
-
-        if config.temperature is not None and not 0.0 <= config.temperature <= 1.0:
-            raise ConfigurationError(
-                f"Temperature must be between 0.0 and 1.0, got {config.temperature}",
-                provider=self.name,
-            )
-
-        if config.top_p is not None and not 0.0 <= config.top_p <= 1.0:
-            raise ConfigurationError(
-                f"top_p must be between 0.0 and 1.0, got {config.top_p}",
-                provider=self.name,
-            )
-
-        if config.max_tokens is not None and config.max_tokens <= 0:
-            raise ConfigurationError(
-                f"max_tokens must be positive, got {config.max_tokens}",
-                provider=self.name,
-            )
-
-    def _validate_messages(self, messages: list[Message]) -> None:
-        """验证消息列表。"""
-        if not messages:
-            raise ConfigurationError(
-                "Messages list cannot be empty",
-                provider=self.name,
-            )
-
     async def generate(
         self,
         messages: list[Message],
         config: GenerateConfig,
     ) -> GenerateResponse:
         """生成文本响应(非流式)。"""
-        self._validate_config(config)
-        self._validate_messages(messages)
+        validate_config(config, self.name, temp_max=1.0)
+        validate_messages(messages, self.name)
 
         client = self._get_client()
         params = self._build_params(messages, config)
@@ -147,7 +108,7 @@ class AnthropicProvider(BaseProvider):
         try:
             response = await client.messages.create(**params)
         except Exception as e:
-            raise self._handle_error(e) from e
+            raise handle_anthropic_error(e, self.name) from e
 
         try:
             return self._parse_response(response)
@@ -163,8 +124,8 @@ class AnthropicProvider(BaseProvider):
         config: GenerateConfig,
     ) -> AsyncGenerator[StreamChunk, None]:
         """生成流式响应。"""
-        self._validate_config(config)
-        self._validate_messages(messages)
+        validate_config(config, self.name, temp_max=1.0)
+        validate_messages(messages, self.name)
 
         client = self._get_client()
         params = self._build_params(messages, config)
@@ -176,7 +137,7 @@ class AnthropicProvider(BaseProvider):
                     if parsed:
                         yield parsed
         except Exception as e:
-            raise self._handle_error(e) from e
+            raise handle_anthropic_error(e, self.name) from e
 
     def _build_params(
         self,
@@ -394,136 +355,6 @@ class AnthropicProvider(BaseProvider):
             )
 
         return None
-
-    def _handle_error(self, error: Exception) -> AIError:
-        """将 Anthropic 错误转换为统一错误类型。"""
-        error_type: str = type(error).__name__
-        error_message: str = str(error)
-
-        # 提取额外信息
-        status_code: int | None = getattr(error, "status_code", None)
-        request_id: str | None = getattr(error, "request_id", None)
-
-        if "AuthenticationError" in error_type or "401" in error_message:
-            return AuthenticationError(
-                error_message,
-                provider=self.name,
-                status_code=401,
-                cause=error,
-            )
-        if "RateLimitError" in error_type or "429" in error_message:
-            return RateLimitError(
-                error_message,
-                provider=self.name,
-                status_code=429,
-                cause=error,
-            )
-        if "BadRequestError" in error_type or "400" in error_message:
-            return InvalidRequestError(
-                error_message,
-                provider=self.name,
-                status_code=400,
-                cause=error,
-            )
-        if "NotFoundError" in error_type or "404" in error_message:
-            return ModelNotFoundError(
-                error_message,
-                provider=self.name,
-                status_code=404,
-                cause=error,
-            )
-        if "APIStatusError" in error_type and status_code:
-            return self._map_status_code(status_code, error_message, error)
-        if "403" in error_message:
-            return AuthenticationError(
-                f"Access forbidden: {error_message}",
-                provider=self.name,
-                status_code=403,
-                cause=error,
-            )
-        if "500" in error_message:
-            return InternalServerError(
-                error_message,
-                provider=self.name,
-                status_code=500,
-                cause=error,
-            )
-        if "503" in error_message or "Service Unavailable" in error_message:
-            return ProviderNotAvailableError(
-                error_message,
-                provider=self.name,
-                status_code=503,
-                cause=error,
-            )
-        if "502" in error_message:
-            return ProviderNotAvailableError(
-                error_message,
-                provider=self.name,
-                status_code=502,
-                cause=error,
-            )
-        if "overloaded" in error_message.lower():
-            return ProviderNotAvailableError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-        if "ContentFilter" in error_message or "content_filter" in error_message:
-            return ContentFilterError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-        if "Timeout" in error_type or "timeout" in error_message.lower():
-            return TimeoutError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-        if "Connection" in error_type or "connect" in error_message.lower():
-            return ConnectionError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-        if "credit" in error_message.lower() or "quota" in error_message.lower():
-            return QuotaExceededError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-
-        return InternalServerError(
-            f"Unexpected error: {error_type}: {error_message}",
-            provider=self.name,
-            status_code=status_code,
-            request_id=request_id,
-            cause=error,
-        ).with_context(original_type=error_type)
-
-    def _map_status_code(
-        self, status_code: int, message: str, cause: Exception | None = None
-    ) -> AIError:
-        """根据 HTTP 状态码映射到具体错误类型。"""
-        error_map: dict[int, type[AIError]] = {
-            400: InvalidRequestError,
-            401: AuthenticationError,
-            403: AuthenticationError,
-            404: ModelNotFoundError,
-            429: RateLimitError,
-            500: InternalServerError,
-            502: ProviderNotAvailableError,
-            503: ProviderNotAvailableError,
-            504: TimeoutError,
-        }
-
-        error_class = error_map.get(status_code, InternalServerError)
-        return error_class(
-            message,
-            provider=self.name,
-            status_code=status_code,
-            cause=cause,
-        )
 
 
 # 便捷别名

@@ -10,10 +10,13 @@ from ..core.error import (
     AIError,
     AuthenticationError,
     ConfigurationError,
+    ConnectionError,
+    ContentFilterError,
     InternalServerError,
     InvalidRequestError,
     ModelNotFoundError,
     ProviderNotAvailableError,
+    QuotaExceededError,
     RateLimitError,
     TimeoutError,
 )
@@ -402,3 +405,211 @@ def openai_tool_to_dict(tool: dict[str, Any]) -> dict[str, Any]:
         "name": tool["function"]["name"],
         "arguments": arguments,
     }
+
+
+def handle_anthropic_error(error: Exception, provider_name: str) -> AIError:
+    """处理 Anthropic 格式的错误。
+
+    Args:
+        error: 原始异常对象。
+        provider_name: 供应商标识。
+
+    Returns:
+        具体的错误类型实例。
+    """
+    error_type: str = type(error).__name__
+    error_message: str = str(error)
+    info = extract_error_info(error)
+    status_code = info["status_code"]
+    request_id = info["request_id"]
+
+    # Anthropic SDK 特有异常类型
+    if "AuthenticationError" in error_type or "401" in error_message:
+        return AuthenticationError(
+            error_message,
+            provider=provider_name,
+            status_code=401,
+            cause=error,
+        )
+    if "RateLimitError" in error_type or "429" in error_message:
+        return RateLimitError(
+            error_message,
+            provider=provider_name,
+            status_code=429,
+            cause=error,
+        )
+    if "BadRequestError" in error_type or "400" in error_message:
+        return InvalidRequestError(
+            error_message,
+            provider=provider_name,
+            status_code=400,
+            cause=error,
+        )
+    if "NotFoundError" in error_type or "404" in error_message:
+        return ModelNotFoundError(
+            error_message,
+            provider=provider_name,
+            status_code=404,
+            cause=error,
+        )
+    if "APIStatusError" in error_type and status_code:
+        return map_status_code_to_error(status_code, error_message, provider_name, error)
+
+    # Anthropic 特有错误模式
+    if "overloaded" in error_message.lower():
+        return ProviderNotAvailableError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+    if "ContentFilter" in error_message or "content_filter" in error_message:
+        return ContentFilterError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+    if "credit" in error_message.lower() or "quota" in error_message.lower():
+        return QuotaExceededError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+
+    # 通用错误处理
+    if "403" in error_message:
+        return AuthenticationError(
+            f"Access forbidden: {error_message}",
+            provider=provider_name,
+            status_code=403,
+            cause=error,
+        )
+    if "500" in error_message:
+        return InternalServerError(
+            error_message,
+            provider=provider_name,
+            status_code=500,
+            cause=error,
+        )
+    if "503" in error_message or "Service Unavailable" in error_message:
+        return ProviderNotAvailableError(
+            error_message,
+            provider=provider_name,
+            status_code=503,
+            cause=error,
+        )
+    if "502" in error_message:
+        return ProviderNotAvailableError(
+            error_message,
+            provider=provider_name,
+            status_code=502,
+            cause=error,
+        )
+    if "Timeout" in error_type or "timeout" in error_message.lower():
+        return TimeoutError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+    if "Connection" in error_type or "connect" in error_message.lower():
+        return ConnectionError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+
+    return InternalServerError(
+        f"Unexpected error: {error_type}: {error_message}",
+        provider=provider_name,
+        status_code=status_code,
+        request_id=request_id,
+        cause=error,
+    ).with_context(original_type=error_type)
+
+
+def handle_google_error(error: Exception, provider_name: str) -> AIError:
+    """处理 Google (Gemini) 格式的错误。
+
+    Args:
+        error: 原始异常对象。
+        provider_name: 供应商标识。
+
+    Returns:
+        具体的错误类型实例。
+    """
+    error_type: str = type(error).__name__
+    error_message: str = str(error)
+    error_message_lower = error_message.lower()
+
+    # Google SDK 特有异常类型
+    if "InvalidAPIKey" in error_type or (
+        "invalid" in error_message_lower and "api" in error_message_lower
+    ):
+        return AuthenticationError(error_message, provider=provider_name)
+
+    if "ResourceExhausted" in error_type or "resourc" in error_message_lower:
+        if "quota" in error_message_lower:
+            return QuotaExceededError(error_message, provider=provider_name)
+        return RateLimitError(error_message, provider=provider_name)
+
+    if "InvalidArgument" in error_type or "400" in error_message:
+        return InvalidRequestError(error_message, provider=provider_name)
+
+    if "NotFound" in error_type or "404" in error_message:
+        return ModelNotFoundError(error_message, provider=provider_name)
+
+    if "PermissionDenied" in error_type or "403" in error_message:
+        return AuthenticationError(
+            f"Access forbidden: {error_message}",
+            provider=provider_name,
+        )
+
+    if "Unavailable" in error_type or "503" in error_message:
+        return ProviderNotAvailableError(
+            error_message,
+            provider=provider_name,
+            status_code=503,
+            cause=error,
+        )
+
+    if "Internal" in error_type or "500" in error_message:
+        return InternalServerError(
+            error_message,
+            provider=provider_name,
+            status_code=500,
+            cause=error,
+        )
+
+    if "DeadlineExceeded" in error_type or "timeout" in error_message_lower:
+        return TimeoutError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+
+    # Google 特有错误模式
+    if (
+        "Safety" in error_type
+        or "Blocked" in error_message
+        or "safety" in error_message_lower
+    ):
+        return ContentFilterError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+
+    if "quota" in error_message_lower or "exhausted" in error_message_lower:
+        return QuotaExceededError(
+            error_message,
+            provider=provider_name,
+            cause=error,
+        )
+
+    if "429" in error_message:
+        return RateLimitError(error_message, provider=provider_name)
+
+    return InternalServerError(
+        f"Unexpected error: {error_type}: {error_message}",
+        provider=provider_name,
+        cause=error,
+    ).with_context(original_type=error_type)

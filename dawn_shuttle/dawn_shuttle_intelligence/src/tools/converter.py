@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from .types import ToolCall, ToolDefinition, ToolResult
+from .types import (
+    ToolCall,
+    ToolDefinition,
+    ToolResult,
+    content_to_string,
+)
 
 ProviderType = Literal["openai", "anthropic", "google"]
 """提供商类型。"""
@@ -187,20 +192,10 @@ class ToolConverter:
         tool_name: str,
     ) -> dict[str, Any]:
         """转换为 OpenAI tool message 格式。"""
-        import json
-
-        content = result.content
-        if isinstance(content, dict):
-            content = json.dumps(content, ensure_ascii=False)
-        elif isinstance(content, bytes):
-            content = content.decode("utf-8", errors="replace")
-        else:
-            content = str(content)
-
         return {
             "role": "tool",
             "tool_call_id": result.tool_call_id,
-            "content": content,
+            "content": content_to_string(result.content),
         }
 
     # ============ Anthropic 格式 ============

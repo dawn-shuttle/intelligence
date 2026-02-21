@@ -3,6 +3,11 @@
 import pytest
 
 from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.google import GoogleProvider
+from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.base import (
+    handle_google_error,
+    validate_config,
+    validate_messages,
+)
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.config import GenerateConfig
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.types import (
@@ -55,7 +60,7 @@ class TestGoogleProvider:
         config = GenerateConfig()
 
         with pytest.raises(ConfigurationError, match="Model name is required"):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_config_invalid_temperature(self) -> None:
         """测试无效温度验证。"""
@@ -63,14 +68,14 @@ class TestGoogleProvider:
         config = GenerateConfig(model="gemini-2.0-flash", temperature=3.0)
 
         with pytest.raises(ConfigurationError, match="Temperature must be between"):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_messages_empty(self) -> None:
         """测试空消息列表验证。"""
         provider = GoogleProvider()
 
         with pytest.raises(ConfigurationError, match="Messages list cannot be empty"):
-            provider._validate_messages([])
+            validate_messages([], provider.name)
 
     def test_build_params_basic(self) -> None:
         """测试构建基本参数。"""
@@ -150,7 +155,7 @@ class TestGoogleProvider:
         provider = GoogleProvider()
 
         error = Exception("InvalidAPIKey: Invalid API key")
-        result = provider._handle_error(error)
+        result = handle_google_error(error, provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
         assert isinstance(result, AuthenticationError)
@@ -160,7 +165,7 @@ class TestGoogleProvider:
         provider = GoogleProvider()
 
         error = Exception("ResourceExhausted: Rate limit exceeded")
-        result = provider._handle_error(error)
+        result = handle_google_error(error, provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import RateLimitError
         assert isinstance(result, RateLimitError)
@@ -170,7 +175,7 @@ class TestGoogleProvider:
         provider = GoogleProvider()
 
         error = Exception("Safety: Content blocked")
-        result = provider._handle_error(error)
+        result = handle_google_error(error, provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ContentFilterError
         assert isinstance(result, ContentFilterError)
@@ -180,7 +185,7 @@ class TestGoogleProvider:
         provider = GoogleProvider()
 
         error = Exception("DeadlineExceeded: Timeout")
-        result = provider._handle_error(error)
+        result = handle_google_error(error, provider.name)
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import TimeoutError
         assert isinstance(result, TimeoutError)

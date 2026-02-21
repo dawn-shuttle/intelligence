@@ -6,20 +6,16 @@ import json
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from .base import (
+    handle_google_error,
+    validate_config,
+    validate_messages,
+)
 from ..core.config import GenerateConfig
 from ..core.error import (
     AIError,
-    AuthenticationError,
     ConfigurationError,
-    ContentFilterError,
-    InternalServerError,
-    InvalidRequestError,
-    ModelNotFoundError,
-    ProviderNotAvailableError,
-    QuotaExceededError,
-    RateLimitError,
     ResponseParseError,
-    TimeoutError,
 )
 from ..core.provider import BaseProvider
 from ..core.response import GenerateResponse, StreamChunk, Usage
@@ -100,48 +96,14 @@ class GoogleProvider(BaseProvider):
         """获取支持的模型列表。"""
         return self.SUPPORTED_MODELS.copy()
 
-    def _validate_config(self, config: GenerateConfig) -> None:
-        """验证配置参数。"""
-        if not config.model:
-            raise ConfigurationError(
-                "Model name is required",
-                provider=self.name,
-            )
-
-        if config.temperature is not None and not 0.0 <= config.temperature <= 2.0:
-            raise ConfigurationError(
-                f"Temperature must be between 0.0 and 2.0, got {config.temperature}",
-                provider=self.name,
-            )
-
-        if config.top_p is not None and not 0.0 <= config.top_p <= 1.0:
-            raise ConfigurationError(
-                f"top_p must be between 0.0 and 1.0, got {config.top_p}",
-                provider=self.name,
-            )
-
-        if config.max_tokens is not None and config.max_tokens <= 0:
-            raise ConfigurationError(
-                f"max_tokens must be positive, got {config.max_tokens}",
-                provider=self.name,
-            )
-
-    def _validate_messages(self, messages: list[Message]) -> None:
-        """验证消息列表。"""
-        if not messages:
-            raise ConfigurationError(
-                "Messages list cannot be empty",
-                provider=self.name,
-            )
-
     async def generate(
         self,
         messages: list[Message],
         config: GenerateConfig,
     ) -> GenerateResponse:
         """生成文本响应(非流式)。"""
-        self._validate_config(config)
-        self._validate_messages(messages)
+        validate_config(config, self.name)
+        validate_messages(messages, self.name)
 
         model = self._get_model(config.model)
         params = self._build_params(messages, config)
@@ -161,7 +123,7 @@ class GoogleProvider(BaseProvider):
                 generation_config=generation_config,
             )
         except Exception as e:
-            raise self._handle_error(e) from e
+            raise handle_google_error(e, self.name) from e
 
         try:
             return self._parse_response(response, config.model)
@@ -177,8 +139,8 @@ class GoogleProvider(BaseProvider):
         config: GenerateConfig,
     ) -> AsyncGenerator[StreamChunk, None]:
         """生成流式响应。"""
-        self._validate_config(config)
-        self._validate_messages(messages)
+        validate_config(config, self.name)
+        validate_messages(messages, self.name)
 
         params = self._build_params(messages, config)
         contents, system_instruction, generation_config = params
@@ -199,7 +161,7 @@ class GoogleProvider(BaseProvider):
                 stream=True,
             )
         except Exception as e:
-            raise self._handle_error(e) from e
+            raise handle_google_error(e, self.name) from e
 
         async for chunk in response:
             try:
@@ -410,76 +372,6 @@ class GoogleProvider(BaseProvider):
             is_finished=finish_reason is not None,
             finish_reason=finish_reason,
         )
-
-    def _handle_error(self, error: Exception) -> AIError:
-        """将 Google 错误转换为统一错误类型。"""
-        error_type: str = type(error).__name__
-        error_message: str = str(error)
-        error_message_lower = error_message.lower()
-
-        # 检查类型名或错误消息中的关键词
-        if "InvalidAPIKey" in error_type or (
-            "invalid" in error_message_lower and "api" in error_message_lower
-        ):
-            return AuthenticationError(error_message, provider=self.name)
-        if "ResourceExhausted" in error_type or "resourc" in error_message_lower:
-            # 先检查 quota, 再返回 RateLimitError
-            if "quota" in error_message_lower:
-                return QuotaExceededError(error_message, provider=self.name)
-            return RateLimitError(error_message, provider=self.name)
-        if "429" in error_message:
-            return RateLimitError(error_message, provider=self.name)
-        if "InvalidArgument" in error_type or "400" in error_message:
-            return InvalidRequestError(error_message, provider=self.name)
-        if "NotFound" in error_type or "404" in error_message:
-            return ModelNotFoundError(error_message, provider=self.name)
-        if "PermissionDenied" in error_type or "403" in error_message:
-            return AuthenticationError(
-                f"Access forbidden: {error_message}",
-                provider=self.name,
-            )
-        if "Unavailable" in error_type or "503" in error_message:
-            return ProviderNotAvailableError(
-                error_message,
-                provider=self.name,
-                status_code=503,
-                cause=error,
-            )
-        if "Internal" in error_type or "500" in error_message:
-            return InternalServerError(
-                error_message,
-                provider=self.name,
-                status_code=500,
-                cause=error,
-            )
-        if "DeadlineExceeded" in error_type or "timeout" in error_message_lower:
-            return TimeoutError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-        if (
-            "Safety" in error_type
-            or "Blocked" in error_message
-            or "safety" in error_message_lower
-        ):
-            return ContentFilterError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-        if "quota" in error_message_lower or "exhausted" in error_message_lower:
-            return QuotaExceededError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-
-        return InternalServerError(
-            f"Unexpected error: {error_type}: {error_message}",
-            provider=self.name,
-            cause=error,
-        ).with_context(original_type=error_type)
 
 
 # 便捷别名

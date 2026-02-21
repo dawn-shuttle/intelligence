@@ -2,10 +2,43 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
+
+
+def normalize_content(content: Any) -> str | dict[str, Any] | bytes:
+    """规范化内容为统一格式。
+
+    Args:
+        content: 任意内容。
+
+    Returns:
+        字符串、字典或字节。
+    """
+    if isinstance(content, (str, dict, bytes)):
+        return content
+    return str(content)
+
+
+def content_to_string(content: Any) -> str:
+    """将内容转换为字符串。
+
+    Args:
+        content: 任意内容。
+
+    Returns:
+        字符串格式的内容。
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return json.dumps(content, ensure_ascii=False)
+    if isinstance(content, bytes):
+        return content.decode("utf-8", errors="replace")
+    return str(content)
 
 # JSON Schema 类型
 JSONSchemaType = Literal[
@@ -203,27 +236,19 @@ class ToolResult:
 
     def to_openai_message(self) -> dict[str, Any]:
         """转换为 OpenAI tool 消息格式。"""
-        content = self.content
-        if isinstance(content, dict):
-            import json
-            content = json.dumps(content, ensure_ascii=False)
-        elif isinstance(content, bytes):
-            content = content.decode("utf-8", errors="replace")
-
         return {
             "role": "tool",
             "tool_call_id": self.tool_call_id,
-            "content": str(content),
+            "content": content_to_string(self.content),
         }
 
     def to_anthropic_content(self) -> dict[str, Any]:
         """转换为 Anthropic tool_result 内容块。"""
+        # Anthropic 接受 dict 或 str
         content = self.content
-        if isinstance(content, dict):
-            pass  # Anthropic 接受 dict
-        elif isinstance(content, bytes):
+        if isinstance(content, bytes):
             content = content.decode("utf-8", errors="replace")
-        else:
+        elif not isinstance(content, (str, dict)):
             content = str(content)
 
         return {
@@ -238,12 +263,13 @@ class ToolResult:
         content = self.content
         if isinstance(content, str):
             try:
-                import json
                 content = json.loads(content)
             except json.JSONDecodeError:
                 content = {"result": content}
         elif isinstance(content, bytes):
             content = {"result": content.decode("utf-8", errors="replace")}
+        elif not isinstance(content, dict):
+            content = {"result": str(content)}
 
         if self.is_error:
             content = {"error": self.error_message or "Tool execution failed"}

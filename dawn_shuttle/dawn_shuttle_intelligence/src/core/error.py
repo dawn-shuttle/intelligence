@@ -4,7 +4,10 @@ from typing import Any
 
 
 class AIError(Exception):
-    """AI 调用基础异常。"""
+    """AI 调用基础异常。
+
+    所有具体错误类型的基类, 不应直接实例化使用。
+    """
 
     def __init__(self, message: str, provider: str | None = None, **context: Any):
         super().__init__(message)
@@ -75,6 +78,24 @@ class ConnectionError(AIError):
 
 
 class ProviderNotAvailableError(AIError):
-    """提供商服务不可用。"""
+    """提供商服务不可用(如 503 错误)。"""
+
+    pass
+
+
+class InternalServerError(AIError):
+    """服务器内部错误(如 500 错误)。"""
+
+    pass
+
+
+class ResponseParseError(AIError):
+    """响应解析失败。"""
+
+    pass
+
+
+class ConfigurationError(AIError):
+    """配置错误(如缺少必要参数)。"""
 
     pass

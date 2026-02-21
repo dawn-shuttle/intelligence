@@ -9,10 +9,16 @@ from ..core.config import GenerateConfig
 from ..core.error import (
     AIError,
     AuthenticationError,
+    ConfigurationError,
+    ConnectionError,
     ContentFilterError,
+    InternalServerError,
     InvalidRequestError,
     ModelNotFoundError,
+    ProviderNotAvailableError,
+    QuotaExceededError,
     RateLimitError,
+    ResponseParseError,
     TimeoutError,
 )
 from ..core.provider import BaseProvider
@@ -109,6 +115,54 @@ class OpenAIProvider(BaseProvider):
         """
         return self.SUPPORTED_MODELS.copy()
 
+    def _validate_config(self, config: GenerateConfig) -> None:
+        """验证配置参数。
+
+        Args:
+            config: 生成配置。
+
+        Raises:
+            ConfigurationError: 配置无效。
+        """
+        if not config.model:
+            raise ConfigurationError(
+                "Model name is required",
+                provider=self.name,
+            )
+
+        if config.temperature is not None and not 0.0 <= config.temperature <= 2.0:
+            raise ConfigurationError(
+                f"Temperature must be between 0.0 and 2.0, got {config.temperature}",
+                provider=self.name,
+            )
+
+        if config.top_p is not None and not 0.0 <= config.top_p <= 1.0:
+            raise ConfigurationError(
+                f"top_p must be between 0.0 and 1.0, got {config.top_p}",
+                provider=self.name,
+            )
+
+        if config.max_tokens is not None and config.max_tokens <= 0:
+            raise ConfigurationError(
+                f"max_tokens must be positive, got {config.max_tokens}",
+                provider=self.name,
+            )
+
+    def _validate_messages(self, messages: list[Message]) -> None:
+        """验证消息列表。
+
+        Args:
+            messages: 消息列表。
+
+        Raises:
+            ConfigurationError: 消息无效。
+        """
+        if not messages:
+            raise ConfigurationError(
+                "Messages list cannot be empty",
+                provider=self.name,
+            )
+
     async def generate(
         self,
         messages: list[Message],
@@ -124,8 +178,22 @@ class OpenAIProvider(BaseProvider):
             GenerateResponse: 统一格式的响应。
 
         Raises:
-            AIError: API 调用错误。
+            ConfigurationError: 配置错误。
+            ConnectionError: 连接错误。
+            RateLimitError: 速率限制。
+            AuthenticationError: 认证错误。
+            InvalidRequestError: 请求无效。
+            ModelNotFoundError: 模型不存在。
+            ContentFilterError: 内容过滤。
+            TimeoutError: 超时。
+            QuotaExceededError: 配额用尽。
+            ProviderNotAvailableError: 服务不可用。
+            InternalServerError: 服务器错误。
+            ResponseParseError: 响应解析错误。
         """
+        self._validate_config(config)
+        self._validate_messages(messages)
+
         client = self._get_client()
         params = self._build_params(messages, config)
 
@@ -134,7 +202,13 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             raise self._handle_error(e) from e
 
-        return self._parse_response(response)
+        try:
+            return self._parse_response(response)
+        except (KeyError, IndexError, AttributeError) as e:
+            raise ResponseParseError(
+                f"Failed to parse response: {e}",
+                provider=self.name,
+            ) from e
 
     async def generate_stream(
         self,
@@ -151,8 +225,22 @@ class OpenAIProvider(BaseProvider):
             StreamChunk: 流式响应块。
 
         Raises:
-            AIError: API 调用错误。
+            ConfigurationError: 配置错误。
+            ConnectionError: 连接错误。
+            RateLimitError: 速率限制。
+            AuthenticationError: 认证错误。
+            InvalidRequestError: 请求无效。
+            ModelNotFoundError: 模型不存在。
+            ContentFilterError: 内容过滤。
+            TimeoutError: 超时。
+            QuotaExceededError: 配额用尽。
+            ProviderNotAvailableError: 服务不可用。
+            InternalServerError: 服务器错误。
+            ResponseParseError: 响应解析错误。
         """
+        self._validate_config(config)
+        self._validate_messages(messages)
+
         client = self._get_client()
         params = self._build_params(messages, config, stream=True)
 
@@ -162,7 +250,13 @@ class OpenAIProvider(BaseProvider):
             raise self._handle_error(e) from e
 
         async for chunk in stream:
-            parsed = self._parse_stream_chunk(chunk)
+            try:
+                parsed = self._parse_stream_chunk(chunk)
+            except (KeyError, IndexError, AttributeError) as e:
+                raise ResponseParseError(
+                    f"Failed to parse stream chunk: {e}",
+                    provider=self.name,
+                ) from e
             if parsed:
                 yield parsed
 
@@ -319,26 +413,119 @@ class OpenAIProvider(BaseProvider):
             error: 原始异常对象。
 
         Returns:
-            AIError: 统一格式的错误对象。
+            具体的错误类型实例。
         """
         error_type: str = type(error).__name__
         error_message: str = str(error)
 
-        # 根据 OpenAI 错误类型映射
-        if "AuthenticationError" in error_type or "401" in error_message:
+        # OpenAI SDK 具体异常类型映射
+        if "AuthenticationError" in error_type:
             return AuthenticationError(error_message, provider=self.name)
-        elif "RateLimitError" in error_type or "429" in error_message:
+
+        if "RateLimitError" in error_type:
             return RateLimitError(error_message, provider=self.name)
-        elif "BadRequestError" in error_type or "400" in error_message:
+
+        if "BadRequestError" in error_type:
             return InvalidRequestError(error_message, provider=self.name)
-        elif "NotFoundError" in error_type or "404" in error_message:
+
+        if "NotFoundError" in error_type:
             return ModelNotFoundError(error_message, provider=self.name)
-        elif "ContentFilter" in error_message:
+
+        if "APIStatusError" in error_type:
+            # 根据状态码映射
+            status_code = getattr(error, "status_code", None)
+            if status_code:
+                return self._map_status_code(status_code, error_message)
+
+        # HTTP 状态码映射(从错误消息中提取)
+        if "401" in error_message:
+            return AuthenticationError(error_message, provider=self.name)
+
+        if "403" in error_message:
+            return AuthenticationError(
+                f"Access forbidden: {error_message}",
+                provider=self.name,
+            )
+
+        if "429" in error_message:
+            return RateLimitError(error_message, provider=self.name)
+
+        if "400" in error_message:
+            return InvalidRequestError(error_message, provider=self.name)
+
+        if "404" in error_message:
+            return ModelNotFoundError(error_message, provider=self.name)
+
+        if "500" in error_message or "Internal" in error_type:
+            return InternalServerError(error_message, provider=self.name)
+
+        if "503" in error_message or "Service Unavailable" in error_message:
+            return ProviderNotAvailableError(error_message, provider=self.name)
+
+        if "502" in error_message or "Bad Gateway" in error_message:
+            return ProviderNotAvailableError(error_message, provider=self.name)
+
+        # 内容过滤
+        if "ContentFilter" in error_message:
             return ContentFilterError(error_message, provider=self.name)
-        elif "Timeout" in error_type or "timeout" in error_message.lower():
+
+        # 超时
+        if "Timeout" in error_type or "timeout" in error_message.lower():
             return TimeoutError(error_message, provider=self.name)
-        else:
-            return AIError(error_message, provider=self.name)
+
+        # 连接错误
+        if "Connection" in error_type or "connect" in error_message.lower():
+            return ConnectionError(error_message, provider=self.name)
+
+        # 配额错误
+        if "quota" in error_message.lower() or "insufficient_quota" in error_message:
+            return QuotaExceededError(error_message, provider=self.name)
+
+        # 默认返回服务器错误(不使用通用 AIError)
+        return InternalServerError(
+            f"Unexpected error: {error_type}: {error_message}",
+            provider=self.name,
+            original_error=error_type,
+        )
+
+    def _map_status_code(self, status_code: int, message: str) -> AIError:
+        """根据 HTTP 状态码映射到具体错误类型。
+
+        Args:
+            status_code: HTTP 状态码。
+            message: 错误消息。
+
+        Returns:
+            具体的错误类型实例。
+        """
+        if status_code == 400:
+            return InvalidRequestError(message, provider=self.name)
+        if status_code == 401:
+            return AuthenticationError(message, provider=self.name)
+        if status_code == 403:
+            return AuthenticationError(
+                f"Access forbidden: {message}",
+                provider=self.name,
+            )
+        if status_code == 404:
+            return ModelNotFoundError(message, provider=self.name)
+        if status_code == 429:
+            return RateLimitError(message, provider=self.name)
+        if status_code == 500:
+            return InternalServerError(message, provider=self.name)
+        if status_code == 502:
+            return ProviderNotAvailableError(message, provider=self.name)
+        if status_code == 503:
+            return ProviderNotAvailableError(message, provider=self.name)
+        if status_code == 504:
+            return TimeoutError(message, provider=self.name)
+
+        # 其他状态码返回服务器错误
+        return InternalServerError(
+            f"HTTP {status_code}: {message}",
+            provider=self.name,
+            status_code=status_code,
+        )
 
 
 # 便捷别名

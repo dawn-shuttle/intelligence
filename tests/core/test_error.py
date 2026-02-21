@@ -5,13 +5,16 @@ import pytest
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import (
     AIError,
     AuthenticationError,
+    ConfigurationError,
     ConnectionError,
     ContentFilterError,
+    InternalServerError,
     InvalidRequestError,
     ModelNotFoundError,
     ProviderNotAvailableError,
     QuotaExceededError,
     RateLimitError,
+    ResponseParseError,
     TimeoutError,
 )
 
@@ -132,3 +135,33 @@ class TestProviderNotAvailableError:
         """测试提供商不可用错误。"""
         error = ProviderNotAvailableError("Service unavailable", provider="openai")
         assert isinstance(error, AIError)
+
+
+class TestInternalServerError:
+    """测试 InternalServerError。"""
+
+    def test_internal_server_error(self) -> None:
+        """测试服务器内部错误。"""
+        error = InternalServerError("500 Internal Error", provider="openai")
+        assert isinstance(error, AIError)
+        assert "500 Internal Error" in str(error)
+
+
+class TestConfigurationError:
+    """测试 ConfigurationError。"""
+
+    def test_configuration_error(self) -> None:
+        """测试配置错误。"""
+        error = ConfigurationError("Missing model name", provider="openai")
+        assert isinstance(error, AIError)
+        assert "Missing model name" in str(error)
+
+
+class TestResponseParseError:
+    """测试 ResponseParseError。"""
+
+    def test_response_parse_error(self) -> None:
+        """测试响应解析错误。"""
+        error = ResponseParseError("Invalid response format", provider="openai")
+        assert isinstance(error, AIError)
+        assert "Invalid response format" in str(error)

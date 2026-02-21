@@ -211,14 +211,207 @@ class TestOpenAIProvider:
         assert isinstance(result, TimeoutError)
 
     def test_handle_error_generic(self) -> None:
-        """测试处理通用错误。"""
+        """测试处理通用错误(返回 InternalServerError)。"""
         provider = OpenAIProvider()
 
         error = Exception("Unknown error")
         result = provider._handle_error(error)
 
-        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AIError
-        assert isinstance(result, AIError)
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import InternalServerError
+        assert isinstance(result, InternalServerError)
+
+    def test_handle_error_500(self) -> None:
+        """测试处理 500 错误。"""
+        provider = OpenAIProvider()
+
+        error = Exception("500 Internal Server Error")
+        result = provider._handle_error(error)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import InternalServerError
+        assert isinstance(result, InternalServerError)
+
+    def test_handle_error_503(self) -> None:
+        """测试处理 503 错误。"""
+        provider = OpenAIProvider()
+
+        error = Exception("503 Service Unavailable")
+        result = provider._handle_error(error)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ProviderNotAvailableError
+        assert isinstance(result, ProviderNotAvailableError)
+
+    def test_handle_error_502(self) -> None:
+        """测试处理 502 错误。"""
+        provider = OpenAIProvider()
+
+        error = Exception("502 Bad Gateway")
+        result = provider._handle_error(error)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ProviderNotAvailableError
+        assert isinstance(result, ProviderNotAvailableError)
+
+    def test_handle_error_connection(self) -> None:
+        """测试处理连接错误。"""
+        provider = OpenAIProvider()
+
+        error = Exception("Connection refused")
+        result = provider._handle_error(error)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConnectionError
+        assert isinstance(result, ConnectionError)
+
+    def test_handle_error_quota(self) -> None:
+        """测试处理配额错误。"""
+        provider = OpenAIProvider()
+
+        error = Exception("insufficient_quota: You exceeded your quota")
+        result = provider._handle_error(error)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import QuotaExceededError
+        assert isinstance(result, QuotaExceededError)
+
+    def test_handle_error_forbidden(self) -> None:
+        """测试处理 403 错误。"""
+        provider = OpenAIProvider()
+
+        error = Exception("403 Forbidden")
+        result = provider._handle_error(error)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
+        assert isinstance(result, AuthenticationError)
+
+    def test_map_status_code_401(self) -> None:
+        """测试状态码 401 映射。"""
+        provider = OpenAIProvider()
+
+        result = provider._map_status_code(401, "Unauthorized")
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
+        assert isinstance(result, AuthenticationError)
+
+    def test_map_status_code_404(self) -> None:
+        """测试状态码 404 映射。"""
+        provider = OpenAIProvider()
+
+        result = provider._map_status_code(404, "Not found")
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ModelNotFoundError
+        assert isinstance(result, ModelNotFoundError)
+
+    def test_map_status_code_500(self) -> None:
+        """测试状态码 500 映射。"""
+        provider = OpenAIProvider()
+
+        result = provider._map_status_code(500, "Internal error")
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import InternalServerError
+        assert isinstance(result, InternalServerError)
+
+    def test_map_status_code_503(self) -> None:
+        """测试状态码 503 映射。"""
+        provider = OpenAIProvider()
+
+        result = provider._map_status_code(503, "Service unavailable")
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ProviderNotAvailableError
+        assert isinstance(result, ProviderNotAvailableError)
+
+    def test_map_status_code_504(self) -> None:
+        """测试状态码 504 映射。"""
+        provider = OpenAIProvider()
+
+        result = provider._map_status_code(504, "Gateway timeout")
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import TimeoutError
+        assert isinstance(result, TimeoutError)
+
+    def test_map_status_code_unknown(self) -> None:
+        """测试未知状态码映射。"""
+        provider = OpenAIProvider()
+
+        result = provider._map_status_code(418, "I'm a teapot")
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import InternalServerError
+        assert isinstance(result, InternalServerError)
+
+
+class TestOpenAIProviderValidation:
+    """测试 OpenAIProvider 参数验证。"""
+
+    def test_validate_config_empty_model(self) -> None:
+        """测试空模型名称验证。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig()  # 空模型
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="Model name is required"):
+            provider._validate_config(config)
+
+    def test_validate_config_invalid_temperature(self) -> None:
+        """测试无效温度验证。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig(model="gpt-4", temperature=3.0)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="Temperature must be between"):
+            provider._validate_config(config)
+
+    def test_validate_config_negative_temperature(self) -> None:
+        """测试负温度验证。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig(model="gpt-4", temperature=-0.5)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="Temperature must be between"):
+            provider._validate_config(config)
+
+    def test_validate_config_invalid_top_p(self) -> None:
+        """测试无效 top_p 验证。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig(model="gpt-4", top_p=1.5)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="top_p must be between"):
+            provider._validate_config(config)
+
+    def test_validate_config_negative_max_tokens(self) -> None:
+        """测试负 max_tokens 验证。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig(model="gpt-4", max_tokens=-100)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="max_tokens must be positive"):
+            provider._validate_config(config)
+
+    def test_validate_config_zero_max_tokens(self) -> None:
+        """测试零 max_tokens 验证。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig(model="gpt-4", max_tokens=0)
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="max_tokens must be positive"):
+            provider._validate_config(config)
+
+    def test_validate_messages_empty(self) -> None:
+        """测试空消息列表验证。"""
+        provider = OpenAIProvider()
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
+        with pytest.raises(ConfigurationError, match="Messages list cannot be empty"):
+            provider._validate_messages([])
+
+    def test_validate_config_valid(self) -> None:
+        """测试有效配置。"""
+        provider = OpenAIProvider()
+        config = GenerateConfig(
+            model="gpt-4",
+            temperature=0.7,
+            top_p=0.9,
+            max_tokens=100,
+        )
+        # 不应抛出异常
+        provider._validate_config(config)
+
+    def test_validate_messages_valid(self) -> None:
+        """测试有效消息列表。"""
+        provider = OpenAIProvider()
+        messages = [Message.user("hello")]
+        # 不应抛出异常
+        provider._validate_messages(messages)
 
     def test_build_params_with_top_p(self) -> None:
         """测试构建带 top_p 参数。"""

@@ -414,3 +414,193 @@ class TestLoopConfig:
         assert config.on_tool_call is None
         assert config.on_tool_result is None
         assert config.on_iteration is None
+
+
+class TestProviderTypeDetection:
+    """提供商类型检测测试。"""
+
+    @pytest.mark.asyncio
+    async def test_anthropic_provider_type(self) -> None:
+        """测试 Anthropic 提供商类型。"""
+        # 创建模拟的 anthropic provider
+        class AnthropicMockProvider(BaseProvider):
+            name = "anthropic"
+
+            async def generate(self, messages, config):
+                return make_text_response("done")
+
+            async def generate_stream(self, messages, config):
+                yield None
+
+            def supports_model(self, model):
+                return True
+
+            def get_model_list(self):
+                return []
+
+        provider = AnthropicMockProvider(api_key="test")
+        registry = ToolRegistry()
+
+        # 使用 bytes 内容的工具结果
+        tool_call = ToolCall(id="call_1", name="test", arguments={})
+        tool_result = ToolResult(
+            tool_call_id="call_1",
+            content=b"binary result",
+        )
+
+        # 注册一个测试工具
+        class TestTool(Tool):
+            name = "test"
+            description = "test"
+
+            async def execute(self, **kwargs):
+                return ToolResult(tool_call_id="", content="ok")
+
+        registry.register(TestTool())
+
+        messages = [Message(role=Role.USER, content="test")]
+
+        # 这个测试主要覆盖 _get_provider_type 的 anthropic 分支
+        result = await run_with_tools(
+            messages=messages,
+            provider=provider,
+            tools=registry,
+            config=GenerateConfig(model="claude-3"),
+        )
+
+        assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_google_provider_type(self) -> None:
+        """测试 Google 提供商类型。"""
+        class GoogleMockProvider(BaseProvider):
+            name = "google"
+
+            async def generate(self, messages, config):
+                return make_text_response("done")
+
+            async def generate_stream(self, messages, config):
+                yield None
+
+            def supports_model(self, model):
+                return True
+
+            def get_model_list(self):
+                return []
+
+        provider = GoogleMockProvider(api_key="test")
+        registry = ToolRegistry()
+
+        class TestTool(Tool):
+            name = "test"
+            description = "test"
+
+            async def execute(self, **kwargs):
+                return ToolResult(tool_call_id="", content={"key": "value"})
+
+        registry.register(TestTool())
+
+        messages = [Message(role=Role.USER, content="test")]
+
+        result = await run_with_tools(
+            messages=messages,
+            provider=provider,
+            tools=registry,
+            config=GenerateConfig(model="gemini"),
+        )
+
+        assert result is not None
+
+
+class TestToolResultContentTypes:
+    """测试不同类型的工具结果内容。"""
+
+    @pytest.mark.asyncio
+    async def test_bytes_content(self) -> None:
+        """测试字节内容。"""
+        class BytesTool(Tool):
+            name = "bytes_tool"
+            description = "Returns bytes"
+
+            async def execute(self, **kwargs):
+                return ToolResult(tool_call_id="", content=b"binary data")
+
+        provider = MockProvider(responses=[
+            make_tool_call_response("call_1", "bytes_tool", {}),
+            make_text_response("Done"),
+        ])
+        registry = ToolRegistry()
+        registry.register(BytesTool())
+
+        messages = [Message(role=Role.USER, content="Test")]
+
+        result = await run_with_tools(
+            messages=messages,
+            provider=provider,
+            tools=registry,
+            config=GenerateConfig(model="mock-model"),
+        )
+
+        assert result.status == LoopStatus.COMPLETED
+
+    @pytest.mark.asyncio
+    async def test_dict_content(self) -> None:
+        """测试字典内容。"""
+        class DictTool(Tool):
+            name = "dict_tool"
+            description = "Returns dict"
+
+            async def execute(self, **kwargs):
+                return ToolResult(tool_call_id="", content={"result": "success"})
+
+        provider = MockProvider(responses=[
+            make_tool_call_response("call_1", "dict_tool", {}),
+            make_text_response("Done"),
+        ])
+        registry = ToolRegistry()
+        registry.register(DictTool())
+
+        messages = [Message(role=Role.USER, content="Test")]
+
+        result = await run_with_tools(
+            messages=messages,
+            provider=provider,
+            tools=registry,
+            config=GenerateConfig(model="mock-model"),
+        )
+
+        assert result.status == LoopStatus.COMPLETED
+
+
+class TestFailingToolExecution:
+    """测试工具执行失败情况。"""
+
+    @pytest.mark.asyncio
+    async def test_tool_execution_exception(self) -> None:
+        """测试工具执行抛出异常。"""
+        class ExceptionTool(Tool):
+            name = "exception_tool"
+            description = "Throws exception"
+
+            async def execute(self, **kwargs):
+                raise RuntimeError("Tool crashed")
+
+        provider = MockProvider(responses=[
+            make_tool_call_response("call_1", "exception_tool", {}),
+            make_text_response("Recovered"),
+        ])
+        registry = ToolRegistry()
+        registry.register(ExceptionTool())
+
+        messages = [Message(role=Role.USER, content="Test")]
+
+        result = await run_with_tools(
+            messages=messages,
+            provider=provider,
+            tools=registry,
+            config=GenerateConfig(model="mock-model"),
+        )
+
+        # 工具执行失败应该记录错误
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0][1].is_error is True

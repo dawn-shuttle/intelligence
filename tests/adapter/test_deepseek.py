@@ -3,6 +3,10 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.base import (
+    validate_config,
+    validate_messages,
+)
 from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.deepseek import DeepSeekProvider
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.config import GenerateConfig
 from dawn_shuttle.dawn_shuttle_intelligence.src.core.types import Message
@@ -55,7 +59,7 @@ class TestDeepSeekProvider:
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
         with pytest.raises(ConfigurationError, match="Model name is required"):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_messages_empty(self) -> None:
         """测试空消息列表验证。"""
@@ -63,7 +67,7 @@ class TestDeepSeekProvider:
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import ConfigurationError
         with pytest.raises(ConfigurationError, match="Messages list cannot be empty"):
-            provider._validate_messages([])
+            validate_messages([], provider.name)
 
     def test_build_params_basic(self) -> None:
         """测试构建基本参数。"""

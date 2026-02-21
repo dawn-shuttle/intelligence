@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.base import (
+    validate_config,
+    validate_messages,
+)
 from dawn_shuttle.dawn_shuttle_intelligence.src.adapter.openai_compatible import (
     OpenAICompatibleProvider,
 )
@@ -65,7 +69,7 @@ class TestOpenAICompatibleProvider:
         config = GenerateConfig(model="")
 
         with pytest.raises(ConfigurationError):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_config_invalid_top_p_high(self) -> None:
         """测试配置验证：top_p 过高。"""
@@ -73,7 +77,7 @@ class TestOpenAICompatibleProvider:
         config = GenerateConfig(model="mock-1", top_p=1.5)
 
         with pytest.raises(ConfigurationError, match="top_p"):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_config_invalid_top_p_low(self) -> None:
         """测试配置验证：top_p 过低。"""
@@ -81,7 +85,7 @@ class TestOpenAICompatibleProvider:
         config = GenerateConfig(model="mock-1", top_p=-0.1)
 
         with pytest.raises(ConfigurationError, match="top_p"):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_config_invalid_max_tokens(self) -> None:
         """测试配置验证：无效 max_tokens。"""
@@ -89,7 +93,7 @@ class TestOpenAICompatibleProvider:
         config = GenerateConfig(model="mock-1", max_tokens=-100)
 
         with pytest.raises(ConfigurationError, match="max_tokens"):
-            provider._validate_config(config)
+            validate_config(config, provider.name)
 
     def test_validate_config_valid(self) -> None:
         """测试配置验证：有效配置。"""
@@ -101,14 +105,14 @@ class TestOpenAICompatibleProvider:
             max_tokens=1000,
         )
         # 不应抛出异常
-        provider._validate_config(config)
+        validate_config(config, provider.name)
 
     def test_validate_messages_empty(self) -> None:
         """测试消息验证：空消息列表。"""
         provider = MockCompatibleProvider()
 
         with pytest.raises(ConfigurationError, match="empty"):
-            provider._validate_messages([])
+            validate_messages([], provider.name)
 
     def test_validate_messages_valid(self) -> None:
         """测试消息验证：有效消息。"""
@@ -116,7 +120,7 @@ class TestOpenAICompatibleProvider:
         messages = [Message.user("Hello")]
 
         # 不应抛出异常
-        provider._validate_messages(messages)
+        validate_messages(messages, provider.name)
 
     def test_build_params_basic(self) -> None:
         """测试构建基本参数。"""

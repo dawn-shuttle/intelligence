@@ -2,30 +2,21 @@
 
 from __future__ import annotations
 
-import contextlib
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any, ClassVar
 
 from ..core.config import GenerateConfig
-from ..core.error import (
-    AIError,
-    AuthenticationError,
-    ConfigurationError,
-    ConnectionError,
-    ContentFilterError,
-    InternalServerError,
-    InvalidRequestError,
-    ModelNotFoundError,
-    ProviderNotAvailableError,
-    QuotaExceededError,
-    RateLimitError,
-    ResponseParseError,
-    TimeoutError,
-)
+from ..core.error import ResponseParseError
 from ..core.provider import BaseProvider
 from ..core.response import GenerateResponse, StreamChunk, Usage
 from ..core.types import Message
-from .base import message_to_openai_format, openai_tool_to_dict
+from .base import (
+    handle_openai_error,
+    message_to_openai_format,
+    openai_tool_to_dict,
+    validate_config,
+    validate_messages,
+)
 
 if TYPE_CHECKING:
     from openai import AsyncOpenAI
@@ -116,54 +107,6 @@ class OpenAIProvider(BaseProvider):
         """
         return self.SUPPORTED_MODELS.copy()
 
-    def _validate_config(self, config: GenerateConfig) -> None:
-        """验证配置参数。
-
-        Args:
-            config: 生成配置。
-
-        Raises:
-            ConfigurationError: 配置无效。
-        """
-        if not config.model:
-            raise ConfigurationError(
-                "Model name is required",
-                provider=self.name,
-            )
-
-        if config.temperature is not None and not 0.0 <= config.temperature <= 2.0:
-            raise ConfigurationError(
-                f"Temperature must be between 0.0 and 2.0, got {config.temperature}",
-                provider=self.name,
-            )
-
-        if config.top_p is not None and not 0.0 <= config.top_p <= 1.0:
-            raise ConfigurationError(
-                f"top_p must be between 0.0 and 1.0, got {config.top_p}",
-                provider=self.name,
-            )
-
-        if config.max_tokens is not None and config.max_tokens <= 0:
-            raise ConfigurationError(
-                f"max_tokens must be positive, got {config.max_tokens}",
-                provider=self.name,
-            )
-
-    def _validate_messages(self, messages: list[Message]) -> None:
-        """验证消息列表。
-
-        Args:
-            messages: 消息列表。
-
-        Raises:
-            ConfigurationError: 消息无效。
-        """
-        if not messages:
-            raise ConfigurationError(
-                "Messages list cannot be empty",
-                provider=self.name,
-            )
-
     async def generate(
         self,
         messages: list[Message],
@@ -192,8 +135,8 @@ class OpenAIProvider(BaseProvider):
             InternalServerError: 服务器错误。
             ResponseParseError: 响应解析错误。
         """
-        self._validate_config(config)
-        self._validate_messages(messages)
+        validate_config(config, self.name)
+        validate_messages(messages, self.name)
 
         client = self._get_client()
         params = self._build_params(messages, config)
@@ -201,7 +144,7 @@ class OpenAIProvider(BaseProvider):
         try:
             response = await client.chat.completions.create(**params)
         except Exception as e:
-            raise self._handle_error(e) from e
+            raise handle_openai_error(e, self.name) from e
 
         try:
             return self._parse_response(response)
@@ -239,8 +182,8 @@ class OpenAIProvider(BaseProvider):
             InternalServerError: 服务器错误。
             ResponseParseError: 响应解析错误。
         """
-        self._validate_config(config)
-        self._validate_messages(messages)
+        validate_config(config, self.name)
+        validate_messages(messages, self.name)
 
         client = self._get_client()
         params = self._build_params(messages, config, stream=True)
@@ -248,7 +191,7 @@ class OpenAIProvider(BaseProvider):
         try:
             stream = await client.chat.completions.create(**params)
         except Exception as e:
-            raise self._handle_error(e) from e
+            raise handle_openai_error(e, self.name) from e
 
         async for chunk in stream:
             try:
@@ -407,213 +350,7 @@ class OpenAIProvider(BaseProvider):
             finish_reason=choice.finish_reason,
         )
 
-    def _handle_error(self, error: Exception) -> AIError:
-        """将 OpenAI 错误转换为统一错误类型。
-
-        Args:
-            error: 原始异常对象。
-
-        Returns:
-            具体的错误类型实例。
-        """
-        error_type: str = type(error).__name__
-        error_message: str = str(error)
-
-        # 提取额外信息
-        status_code: int | None = getattr(error, "status_code", None)
-        request_id: str | None = getattr(error, "request_id", None)
-
-        # OpenAI SDK 具体异常类型映射
-        if "AuthenticationError" in error_type:
-            return AuthenticationError(
-                error_message,
-                provider=self.name,
-                status_code=status_code,
-                request_id=request_id,
-                cause=error,
-            )
-
-        if "RateLimitError" in error_type:
-            # 尝试提取 retry-after
-            retry_after: int | None = None
-            if hasattr(error, "response"):
-                resp = getattr(error, "response", None)
-                if resp and hasattr(resp, "headers"):
-                    ra = resp.headers.get("retry-after")
-                    if ra:
-                        with contextlib.suppress(ValueError):
-                            retry_after = int(ra)
-            return RateLimitError(
-                error_message,
-                provider=self.name,
-                status_code=status_code or 429,
-                request_id=request_id,
-                retry_after=retry_after,
-                cause=error,
-            )
-
-        if "BadRequestError" in error_type:
-            return InvalidRequestError(
-                error_message,
-                provider=self.name,
-                status_code=status_code or 400,
-                request_id=request_id,
-                cause=error,
-            )
-
-        if "NotFoundError" in error_type:
-            return ModelNotFoundError(
-                error_message,
-                provider=self.name,
-                status_code=status_code or 404,
-                request_id=request_id,
-                cause=error,
-            )
-
-        if "APIStatusError" in error_type and status_code:
-            return self._map_status_code(status_code, error_message, error)
-
-        # HTTP 状态码映射(从错误消息中提取)
-        if "401" in error_message:
-            return AuthenticationError(
-                error_message,
-                provider=self.name,
-                status_code=401,
-                cause=error,
-            )
-
-        if "403" in error_message:
-            return AuthenticationError(
-                f"Access forbidden: {error_message}",
-                provider=self.name,
-                status_code=403,
-                cause=error,
-            )
-
-        if "429" in error_message:
-            return RateLimitError(
-                error_message,
-                provider=self.name,
-                status_code=429,
-                cause=error,
-            )
-
-        if "400" in error_message:
-            return InvalidRequestError(
-                error_message,
-                provider=self.name,
-                status_code=400,
-                cause=error,
-            )
-
-        if "404" in error_message:
-            return ModelNotFoundError(
-                error_message,
-                provider=self.name,
-                status_code=404,
-                cause=error,
-            )
-
-        if "500" in error_message or "Internal" in error_type:
-            return InternalServerError(
-                error_message,
-                provider=self.name,
-                status_code=500,
-                request_id=request_id,
-                cause=error,
-            )
-
-        if "503" in error_message or "Service Unavailable" in error_message:
-            return ProviderNotAvailableError(
-                error_message,
-                provider=self.name,
-                status_code=503,
-                cause=error,
-            )
-
-        if "502" in error_message or "Bad Gateway" in error_message:
-            return ProviderNotAvailableError(
-                error_message,
-                provider=self.name,
-                status_code=502,
-                cause=error,
-            )
-
-        # 内容过滤
-        if "ContentFilter" in error_message:
-            return ContentFilterError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-
-        # 超时
-        if "Timeout" in error_type or "timeout" in error_message.lower():
-            return TimeoutError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-
-        # 连接错误
-        if "Connection" in error_type or "connect" in error_message.lower():
-            return ConnectionError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-
-        # 配额错误
-        if "quota" in error_message.lower() or "insufficient_quota" in error_message:
-            return QuotaExceededError(
-                error_message,
-                provider=self.name,
-                cause=error,
-            )
-
-        # 默认返回服务器错误
-        return InternalServerError(
-            f"Unexpected error: {error_type}: {error_message}",
-            provider=self.name,
-            status_code=status_code,
-            request_id=request_id,
-            cause=error,
-        ).with_context(original_type=error_type)
-
-    def _map_status_code(
-        self, status_code: int, message: str, cause: Exception | None = None
-    ) -> AIError:
-        """根据 HTTP 状态码映射到具体错误类型。
-
-        Args:
-            status_code: HTTP 状态码。
-            message: 错误消息。
-            cause: 原始异常。
-
-        Returns:
-            具体的错误类型实例。
-        """
-        error_map: dict[int, type[AIError]] = {
-            400: InvalidRequestError,
-            401: AuthenticationError,
-            403: AuthenticationError,
-            404: ModelNotFoundError,
-            429: RateLimitError,
-            500: InternalServerError,
-            502: ProviderNotAvailableError,
-            503: ProviderNotAvailableError,
-            504: TimeoutError,
-        }
-
-        error_class = error_map.get(status_code, InternalServerError)
-
-        return error_class(
-            message,
-            provider=self.name,
-            status_code=status_code,
-            cause=cause,
-        )
-
 
 # 便捷别名
 openai: type[OpenAIProvider] = OpenAIProvider
+

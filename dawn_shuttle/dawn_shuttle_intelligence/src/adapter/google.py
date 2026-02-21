@@ -197,7 +197,35 @@ class GoogleProvider(BaseProvider):
             role = "user" if msg.role == Role.USER else "model"
 
             parts: list[dict[str, Any]] = []
-            if msg.content is not None:
+
+            # 工具调用处理优先
+            if msg.role == Role.TOOL and msg.tool_call_id:
+                # 工具结果
+                response_content = (
+                    msg.content
+                    if isinstance(msg.content, dict)
+                    else {"result": str(msg.content)}
+                )
+                parts.append({
+                    "function_response": {
+                        "name": msg.name or "",
+                        "response": response_content,
+                    }
+                })
+            elif msg.tool_calls:
+                for tc in msg.tool_calls:
+                    args = (
+                        tc.arguments
+                        if isinstance(tc.arguments, dict)
+                        else json.loads(tc.arguments)
+                    )
+                    parts.append({
+                        "function_call": {
+                            "name": tc.name,
+                            "args": args,
+                        }
+                    })
+            elif msg.content is not None:
                 if isinstance(msg.content, str):
                     parts.append({"text": msg.content})
                 else:
@@ -226,34 +254,6 @@ class GoogleProvider(BaseProvider):
                                         "data": decoded,
                                     }
                                 })
-
-            # 工具调用处理
-            if msg.role == Role.TOOL and msg.tool_call_id:
-                # 工具结果
-                response_content = (
-                    msg.content
-                    if isinstance(msg.content, dict)
-                    else {"result": str(msg.content)}
-                )
-                parts.append({
-                    "function_response": {
-                        "name": msg.name or "",
-                        "response": response_content,
-                    }
-                })
-            elif msg.tool_calls:
-                for tc in msg.tool_calls:
-                    args = (
-                        tc.arguments
-                        if isinstance(tc.arguments, dict)
-                        else json.loads(tc.arguments)
-                    )
-                    parts.append({
-                        "function_call": {
-                            "name": tc.name,
-                            "args": args,
-                        }
-                    })
 
             contents.append({"role": role, "parts": parts})
 

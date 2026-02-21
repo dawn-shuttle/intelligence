@@ -546,24 +546,24 @@ def handle_google_error(error: Exception, provider_name: str) -> AIError:
     ):
         return AuthenticationError(error_message, provider=provider_name)
 
-    if "ResourceExhausted" in error_type or "resourc" in error_message_lower:
+    if "ResourceExhausted" in error_type or "resourceexhausted" in error_message_lower.replace(" ", "").replace("-", ""):
         if "quota" in error_message_lower:
             return QuotaExceededError(error_message, provider=provider_name)
         return RateLimitError(error_message, provider=provider_name)
 
-    if "InvalidArgument" in error_type or "400" in error_message:
+    if "InvalidArgument" in error_type or "400" in error_message or "invalidargument" in error_message_lower.replace(" ", ""):
         return InvalidRequestError(error_message, provider=provider_name)
 
-    if "NotFound" in error_type or "404" in error_message:
+    if "NotFound" in error_type or "404" in error_message or "notfound" in error_message_lower.replace(" ", ""):
         return ModelNotFoundError(error_message, provider=provider_name)
 
-    if "PermissionDenied" in error_type or "403" in error_message:
+    if "PermissionDenied" in error_type or "403" in error_message or "permissiondenied" in error_message_lower.replace(" ", ""):
         return AuthenticationError(
             f"Access forbidden: {error_message}",
             provider=provider_name,
         )
 
-    if "Unavailable" in error_type or "503" in error_message:
+    if "Unavailable" in error_type or "503" in error_message or "unavailable" in error_message_lower.replace(" ", ""):
         return ProviderNotAvailableError(
             error_message,
             provider=provider_name,
@@ -571,7 +571,7 @@ def handle_google_error(error: Exception, provider_name: str) -> AIError:
             cause=error,
         )
 
-    if "Internal" in error_type or "500" in error_message:
+    if "Internal" in error_type or "500" in error_message or "internalerror" in error_message_lower.replace(" ", ""):
         return InternalServerError(
             error_message,
             provider=provider_name,

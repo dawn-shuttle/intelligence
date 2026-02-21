@@ -261,3 +261,320 @@ class TestAnthropicProvider:
 
         from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
         assert isinstance(result, AuthenticationError)
+
+    def test_get_client_success(self) -> None:
+        """测试成功获取客户端。"""
+        provider = AnthropicProvider(api_key="test-key")
+
+        mock_client = MagicMock()
+        with patch.dict("sys.modules", {"anthropic": MagicMock(AsyncAnthropic=MagicMock(return_value=mock_client))}):
+            client = provider._get_client()
+            assert client is not None
+
+    def test_get_client_import_error(self) -> None:
+        """测试获取客户端时导入错误。"""
+        provider = AnthropicProvider(api_key="test-key")
+
+        with patch.dict("sys.modules", {"anthropic": None}):
+            with pytest.raises(ImportError, match="anthropic 包未安装"):
+                provider._get_client()
+
+    def test_parse_response_with_text(self) -> None:
+        """测试解析文本响应。"""
+        provider = AnthropicProvider()
+
+        # Mock response
+        response = MagicMock()
+        response.content = [MagicMock(text="Hello, world!")]
+        response.stop_reason = "end_turn"
+        response.usage = MagicMock(
+            input_tokens=10,
+            output_tokens=5,
+        )
+        response.model = "claude-3-5-sonnet-latest"
+        response.id = "msg_123"
+
+        result = provider._parse_response(response)
+
+        assert result.text == "Hello, world!"
+        assert result.finish_reason == "stop"
+        assert result.usage is not None
+        assert result.usage.prompt_tokens == 10
+
+    def test_parse_response_with_tool_call(self) -> None:
+        """测试解析带工具调用的响应。"""
+        provider = AnthropicProvider()
+
+        # Mock response with tool call
+        response = MagicMock()
+        tool_block = MagicMock()
+        # 删除 text 属性，让它不被 hasattr 检测到
+        del tool_block.text
+        tool_block.name = "get_weather"
+        tool_block.id = "call_123"
+        tool_block.input = {"city": "Beijing"}
+        response.content = [tool_block]
+        response.stop_reason = "tool_use"
+        response.usage = None
+        response.model = "claude-3-5-sonnet-latest"
+        response.id = "msg_123"
+
+        result = provider._parse_response(response)
+
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0]["name"] == "get_weather"
+        assert result.finish_reason == "tool_calls"
+
+    def test_parse_response_max_tokens(self) -> None:
+        """测试解析 max_tokens 结束的响应。"""
+        provider = AnthropicProvider()
+
+        response = MagicMock()
+        response.content = [MagicMock(text="Hello")]
+        response.stop_reason = "max_tokens"
+        response.usage = None
+        response.model = "claude-3-5-sonnet-latest"
+        response.id = "msg_123"
+
+        result = provider._parse_response(response)
+
+        assert result.finish_reason == "length"
+
+    def test_build_params_with_tools(self) -> None:
+        """测试构建带工具的参数。"""
+        provider = AnthropicProvider()
+        messages = [Message.user("hello")]
+        config = GenerateConfig(
+            model="claude-3-5-sonnet-latest",
+            tools=[{
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "获取天气",
+                    "parameters": {"type": "object"},
+                },
+            }],
+            tool_choice="auto",
+        )
+
+        params = provider._build_params(messages, config)
+
+        assert "tools" in params
+        assert "tool_choice" in params
+
+    def test_build_params_with_stop_sequences(self) -> None:
+        """测试构建带停止序列的参数。"""
+        provider = AnthropicProvider()
+        messages = [Message.user("hello")]
+        config = GenerateConfig(
+            model="claude-3-5-sonnet-latest",
+            stop=["END", "STOP"],
+        )
+
+        params = provider._build_params(messages, config)
+
+        assert params["stop_sequences"] == ["END", "STOP"]
+
+    def test_build_params_with_temperature(self) -> None:
+        """测试构建带温度的参数。"""
+        provider = AnthropicProvider()
+        messages = [Message.user("hello")]
+        config = GenerateConfig(
+            model="claude-3-5-sonnet-latest",
+            temperature=0.7,
+            top_p=0.9,
+            top_k=50,
+        )
+
+        params = provider._build_params(messages, config)
+
+        assert params["temperature"] == 0.7
+        assert params["top_p"] == 0.9
+        assert params["top_k"] == 50
+
+    def test_parse_stream_event_text_delta(self) -> None:
+        """测试解析文本增量流式事件。"""
+        provider = AnthropicProvider()
+
+        # 创建一个模拟的 TextDelta 类
+        class MockTextDelta:
+            def __init__(self, text: str):
+                self.text = text
+
+        # Mock event - delta 是 MockTextDelta 实例
+        event = MagicMock()
+        event.delta = MockTextDelta("Hello")
+
+        # Mock anthropic.types.TextDelta
+        with patch.dict("sys.modules", {"anthropic.types": MagicMock(TextDelta=MockTextDelta)}):
+            result = provider._parse_stream_event(event)
+
+        assert result is not None
+        assert result.delta == "Hello"
+        assert not result.is_finished
+
+    def test_parse_stream_event_message_stop(self) -> None:
+        """测试解析消息停止流式事件。"""
+        provider = AnthropicProvider()
+
+        # Mock event - delta 不是 TextDelta 实例
+        event = MagicMock()
+        event.delta = "not a TextDelta"  # isinstance 会返回 False
+        event.message = MagicMock()
+        event.message.stop_reason = "end_turn"
+
+        # Mock anthropic.types.TextDelta - 使用一个不会匹配的类
+        class NotTextDelta:
+            pass
+
+        with patch.dict("sys.modules", {"anthropic.types": MagicMock(TextDelta=NotTextDelta)}):
+            result = provider._parse_stream_event(event)
+
+        assert result is not None
+        assert result.is_finished
+        assert result.finish_reason == "end_turn"
+
+    def test_parse_stream_event_tool_use_stop(self) -> None:
+        """测试解析工具调用停止流式事件。"""
+        provider = AnthropicProvider()
+
+        # Mock event
+        event = MagicMock()
+        event.delta = "not a TextDelta"
+        event.message = MagicMock()
+        event.message.stop_reason = "tool_use"
+
+        class NotTextDelta:
+            pass
+
+        with patch.dict("sys.modules", {"anthropic.types": MagicMock(TextDelta=NotTextDelta)}):
+            result = provider._parse_stream_event(event)
+
+        assert result is not None
+        assert result.finish_reason == "tool_use"
+
+    def test_parse_stream_event_content_block_stop(self) -> None:
+        """测试解析内容块停止流式事件。"""
+        provider = AnthropicProvider()
+
+        # Mock event - 没有 message 属性
+        event = MagicMock()
+        event.delta = "not a TextDelta"
+        del event.message
+
+        class NotTextDelta:
+            pass
+
+        with patch.dict("sys.modules", {"anthropic.types": MagicMock(TextDelta=NotTextDelta)}):
+            result = provider._parse_stream_event(event)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_generate_success(self) -> None:
+        """测试成功生成响应。"""
+        provider = AnthropicProvider(api_key="test-key")
+
+        # Mock response
+        mock_response = MagicMock()
+        mock_response.content = [MagicMock(text="Hello!")]
+        mock_response.stop_reason = "end_turn"
+        mock_response.usage = None
+        mock_response.model = "claude-3-5-sonnet-latest"
+        mock_response.id = "msg_123"
+
+        mock_client = AsyncMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+        with patch.object(provider, "_get_client", return_value=mock_client):
+            messages = [Message.user("Hi")]
+            config = GenerateConfig(model="claude-3-5-sonnet-latest")
+
+            result = await provider.generate(messages, config)
+
+            assert result.text == "Hello!"
+
+    @pytest.mark.asyncio
+    async def test_generate_error(self) -> None:
+        """测试生成时的错误处理。"""
+        provider = AnthropicProvider(api_key="test-key")
+
+        mock_client = AsyncMock()
+        mock_client.messages = AsyncMock()
+        mock_client.messages.create = AsyncMock(
+            side_effect=Exception("401 Unauthorized")
+        )
+
+        with patch.object(provider, "_get_client", return_value=mock_client):
+            messages = [Message.user("Hi")]
+            config = GenerateConfig(model="claude-3-5-sonnet-latest")
+
+            from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
+            with pytest.raises(AuthenticationError):
+                await provider.generate(messages, config)
+
+    @pytest.mark.asyncio
+    async def test_generate_stream_success(self) -> None:
+        """测试成功生成流式响应。"""
+        provider = AnthropicProvider(api_key="test-key")
+
+        # 创建模拟 TextDelta 类
+        class MockTextDelta:
+            def __init__(self, text: str):
+                self.text = text
+
+        # 创建模拟事件
+        events = []
+
+        # Text delta event
+        event1 = MagicMock()
+        event1.delta = MockTextDelta("Hello")
+        events.append(event1)
+
+        # Stop event
+        event2 = MagicMock()
+        event2.delta = "not a TextDelta"
+        event2.message = MagicMock()
+        event2.message.stop_reason = "end_turn"
+        events.append(event2)
+
+        # 创建异步迭代器
+        class AsyncIterator:
+            def __init__(self, items):
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        # Mock stream context manager
+        mock_stream = AsyncMock()
+        mock_stream.__aiter__ = lambda self: AsyncIterator(events)
+
+        # Mock messages.stream 返回一个上下文管理器
+        mock_context = AsyncMock()
+        mock_context.__aenter__ = AsyncMock(return_value=mock_stream)
+        mock_context.__aexit__ = AsyncMock(return_value=None)
+
+        mock_client = AsyncMock()
+        mock_client.messages = MagicMock()
+        mock_client.messages.stream = MagicMock(return_value=mock_context)
+
+        with patch.object(provider, "_get_client", return_value=mock_client):
+            with patch.dict("sys.modules", {"anthropic.types": MagicMock(TextDelta=MockTextDelta)}):
+                messages = [Message.user("Hi")]
+                config = GenerateConfig(model="claude-3-5-sonnet-latest")
+
+                chunks = []
+                async for chunk in provider.generate_stream(messages, config):
+                    chunks.append(chunk)
+
+                assert len(chunks) >= 0

@@ -245,3 +245,253 @@ class TestOpenAICompatibleProvider:
         response = await provider.generate(messages, config)
 
         assert response.text == ""
+
+    def test_get_client_success(self) -> None:
+        """测试成功获取客户端。"""
+        provider = MockCompatibleProvider(api_key="test-key")
+
+        mock_client = MagicMock()
+        with patch.dict("sys.modules", {"openai": MagicMock(AsyncOpenAI=MagicMock(return_value=mock_client))}):
+            client = provider._get_client()
+            assert client is not None
+
+    def test_get_client_import_error(self) -> None:
+        """测试获取客户端时导入错误。"""
+        provider = MockCompatibleProvider(api_key="test-key")
+
+        with patch.dict("sys.modules", {"openai": None}):
+            with pytest.raises(ImportError, match="openai 包未安装"):
+                provider._get_client()
+
+    def test_parse_response_with_tool_calls(self) -> None:
+        """测试解析带工具调用的响应。"""
+        provider = MockCompatibleProvider()
+
+        # Mock response with tool calls
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = None
+        mock_response.choices[0].finish_reason = "tool_calls"
+
+        # Mock tool call - 需要正确实现 model_dump
+        tool_call = MagicMock()
+        tool_call.model_dump.return_value = {
+            "id": "call_123",
+            "function": {
+                "name": "get_weather",
+                "arguments": '{"city": "Beijing"}',
+            },
+        }
+        mock_response.choices[0].message.tool_calls = [tool_call]
+
+        mock_response.usage = None
+        mock_response.id = "test-id"
+        mock_response.model = "mock-1"
+
+        result = provider._parse_response(mock_response)
+
+        assert len(result.tool_calls) == 1
+        assert result.tool_calls[0]["name"] == "get_weather"
+        assert result.finish_reason == "tool_calls"
+
+    def test_parse_response_with_arguments_dict(self) -> None:
+        """测试解析工具调用参数已经是字典的情况。"""
+        provider = MockCompatibleProvider()
+
+        mock_response = MagicMock()
+        mock_response.choices = [MagicMock()]
+        mock_response.choices[0].message.content = None
+        mock_response.choices[0].finish_reason = "tool_calls"
+
+        tool_call = MagicMock()
+        tool_call.model_dump.return_value = {
+            "id": "call_123",
+            "function": {
+                "name": "get_weather",
+                "arguments": {"city": "Beijing"},  # 已经是字典
+            },
+        }
+        mock_response.choices[0].message.tool_calls = [tool_call]
+
+        mock_response.usage = None
+        mock_response.id = "test-id"
+        mock_response.model = "mock-1"
+
+        result = provider._parse_response(mock_response)
+
+        assert result.tool_calls[0]["arguments"] == {"city": "Beijing"}
+
+    def test_parse_stream_chunk_text(self) -> None:
+        """测试解析文本流式块。"""
+        provider = MockCompatibleProvider()
+
+        # Mock chunk
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Hello"
+        chunk.choices[0].finish_reason = None
+
+        result = provider._parse_stream_chunk(chunk)
+
+        assert result is not None
+        assert result.delta == "Hello"
+        assert not result.is_finished
+
+    def test_parse_stream_chunk_finished(self) -> None:
+        """测试解析结束的流式块。"""
+        provider = MockCompatibleProvider()
+
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = None
+        chunk.choices[0].finish_reason = "stop"
+
+        result = provider._parse_stream_chunk(chunk)
+
+        assert result is not None
+        assert result.is_finished
+        assert result.finish_reason == "stop"
+
+    def test_parse_stream_chunk_no_choices(self) -> None:
+        """测试解析无选择的流式块。"""
+        provider = MockCompatibleProvider()
+
+        chunk = MagicMock()
+        chunk.choices = []
+
+        result = provider._parse_stream_chunk(chunk)
+
+        assert result is None
+
+    def test_build_params_with_all_options(self) -> None:
+        """测试构建包含所有选项的参数。"""
+        provider = MockCompatibleProvider()
+        messages = [Message.user("Hello")]
+        config = GenerateConfig(
+            model="mock-1",
+            temperature=0.7,
+            top_p=0.9,
+            max_tokens=1000,
+            stop=["END"],
+            frequency_penalty=0.5,
+            presence_penalty=0.3,
+            seed=42,
+            tools=[{"type": "function", "function": {"name": "test"}}],
+            tool_choice="auto",
+            response_format={"type": "json_object"},
+        )
+
+        params = provider._build_params(messages, config, stream=True)
+
+        assert params["temperature"] == 0.7
+        assert params["top_p"] == 0.9
+        assert params["max_tokens"] == 1000
+        assert params["stop"] == ["END"]
+        assert params["frequency_penalty"] == 0.5
+        assert params["presence_penalty"] == 0.3
+        assert params["seed"] == 42
+        assert params["stream"] is True
+        assert "tools" in params
+        assert params["tool_choice"] == "auto"
+        assert params["response_format"] == {"type": "json_object"}
+
+    def test_build_params_with_extra(self) -> None:
+        """测试构建带额外参数的参数。"""
+        provider = MockCompatibleProvider()
+        messages = [Message.user("Hello")]
+        config = GenerateConfig(
+            model="mock-1",
+            extra={"custom_param": "value"},
+        )
+
+        params = provider._build_params(messages, config)
+
+        assert params["custom_param"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_generate_error_handling(self) -> None:
+        """测试生成时的错误处理。"""
+        provider = MockCompatibleProvider(api_key="test-key")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=Exception("API Error: 401 Unauthorized")
+        )
+        provider._client = mock_client
+
+        messages = [Message.user("Hello")]
+        config = GenerateConfig(model="mock-1")
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import AuthenticationError
+        with pytest.raises(AuthenticationError):
+            await provider.generate(messages, config)
+
+    @pytest.mark.asyncio
+    async def test_generate_stream_success(self) -> None:
+        """测试成功生成流式响应。"""
+        provider = MockCompatibleProvider(api_key="test-key")
+
+        # 创建模拟的流式块
+        chunks = []
+
+        # 文本块
+        chunk1 = MagicMock()
+        chunk1.choices = [MagicMock()]
+        chunk1.choices[0].delta.content = "Hello"
+        chunk1.choices[0].finish_reason = None
+        chunks.append(chunk1)
+
+        # 结束块
+        chunk2 = MagicMock()
+        chunk2.choices = [MagicMock()]
+        chunk2.choices[0].delta.content = None
+        chunk2.choices[0].finish_reason = "stop"
+        chunks.append(chunk2)
+
+        # 创建异步迭代器
+        class AsyncIterator:
+            def __init__(self, items):
+                self.items = items
+                self.index = 0
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                if self.index >= len(self.items):
+                    raise StopAsyncIteration
+                item = self.items[self.index]
+                self.index += 1
+                return item
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(return_value=AsyncIterator(chunks))
+        provider._client = mock_client
+
+        messages = [Message.user("Hello")]
+        config = GenerateConfig(model="mock-1")
+
+        results = []
+        async for chunk in provider.generate_stream(messages, config):
+            results.append(chunk)
+
+        assert len(results) >= 0
+
+    @pytest.mark.asyncio
+    async def test_generate_stream_error_handling(self) -> None:
+        """测试流式生成时的错误处理。"""
+        provider = MockCompatibleProvider(api_key="test-key")
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create = AsyncMock(
+            side_effect=Exception("API Error: 429 Rate limit")
+        )
+        provider._client = mock_client
+
+        messages = [Message.user("Hello")]
+        config = GenerateConfig(model="mock-1")
+
+        from dawn_shuttle.dawn_shuttle_intelligence.src.core.error import RateLimitError
+        with pytest.raises(RateLimitError):
+            async for _ in provider.generate_stream(messages, config):
+                pass

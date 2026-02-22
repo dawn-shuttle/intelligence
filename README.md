@@ -77,7 +77,7 @@ async def stream_example():
 ### 多模态（图片）
 
 ```python
-from dawn_shuttle.dawn_shuttle_intelligence.src.core.types import ImageContent
+from dawn_shuttle.dawn_shuttle_intelligence.src.core.types import Message, TextContent, ImageContent
 
 messages = [
     Message.user([
@@ -116,7 +116,7 @@ provider = DeepSeekProvider(
 
 ```python
 from dawn_shuttle.dawn_shuttle_intelligence.src.tools.tool import Tool
-from dawn_shuttle.dawn_shuttle_intelligence.src.tools.types import ToolResult
+from dawn_shuttle.dawn_shuttle_intelligence.src.tools.types import ToolResult, ToolParameter
 
 class WeatherTool(Tool):
     """天气查询工具。"""
@@ -124,16 +124,15 @@ class WeatherTool(Tool):
     name = "get_weather"
     description = "获取指定城市的天气信息"
     
-    parameters = {
-        "type": "object",
-        "properties": {
-            "city": {
-                "type": "string",
-                "description": "城市名称",
-            },
-        },
-        "required": ["city"],
-    }
+    def get_parameters(self) -> list[ToolParameter]:
+        return [
+            ToolParameter(
+                name="city",
+                type="string",
+                description="城市名称",
+                required=True,
+            ),
+        ]
     
     async def execute(self, city: str) -> ToolResult:
         # 实现工具逻辑

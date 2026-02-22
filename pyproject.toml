@@ -4,18 +4,32 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dawn_shuttle_intelligence"
-version = "0.1.0"
-description = "Dawn Shuttle - 基于命名空间包的子项目模板"
+version = "0.2.0"
+description = "统一的 AI 访问接口 - 支持 OpenAI、Anthropic、Google 等多供应商"
 readme = "README.md"
 license = "LGPL-2.1-or-later"
 requires-python = ">=3.10"
+dependencies = [
+    "httpx>=0.25.0",
+]
 
 [project.optional-dependencies]
+openai = ["openai>=1.0.0"]
+anthropic = ["anthropic>=0.18.0"]
+google = ["google-generativeai>=0.3.0"]
+all = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "google-generativeai>=0.3.0",
+]
 dev = [
     "ruff==0.9.7",
     "black==25.1.0",
     "mypy==1.14.1",
     "bandit==1.8.3",
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
 ]
 
 [project.scripts]

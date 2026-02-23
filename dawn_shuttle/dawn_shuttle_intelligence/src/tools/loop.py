@@ -230,8 +230,9 @@ async def _generate_with_tools(
     # 构建带工具的配置
     config_dict = config.to_dict()
     config_dict["tools"] = tools_param
+    config_with_tools = GenerateConfig(**config_dict)
 
-    return await provider.generate(messages, config)
+    return await provider.generate(messages, config_with_tools)
 
 
 def _prepare_registry(tools: list[Tool] | ToolRegistry) -> ToolRegistry:

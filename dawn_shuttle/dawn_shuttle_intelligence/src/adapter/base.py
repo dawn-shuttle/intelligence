@@ -355,6 +355,9 @@ def message_to_openai_format(message: Message) -> dict[str, Any]:
                             }
                         )
             result["content"] = parts
+    elif message.tool_calls:
+        # assistant 带 tool_calls 时需要空 content
+        result["content"] = ""
 
     # 处理 name
     if message.name:

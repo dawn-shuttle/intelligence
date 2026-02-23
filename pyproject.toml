@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dawn_shuttle_intelligence"
-version = "0.2.0"
+version = "0.2.1"
 description = "统一的 AI 访问接口 - 支持 OpenAI、Anthropic、Google 等多供应商"
 readme = "README.md"
 license = "LGPL-2.1-or-later"

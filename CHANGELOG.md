@@ -4,6 +4,19 @@
 
 ## [未发布]
 
+## [0.2.1] - 2026-02-23
+
+### 新增
+
+- **简化导入路径** - 在 `__init__.py` 中导出常用模块
+  - `from dawn_shuttle.dawn_shuttle_intelligence import OpenAIProvider, Message, GenerateConfig`
+- **PyPI 发布工作流** - 使用 `pypa/gh-action-pypi-publish` 官方 Action
+
+### 修复
+
+- 修复工具调用循环中工具定义未传递的问题
+- 修复 assistant 带 tool_calls 时缺少 content 字段的问题
+
 ## [0.2.0] - 2026-02-22
 
 ### 新增

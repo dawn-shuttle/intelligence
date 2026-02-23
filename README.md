@@ -77,7 +77,7 @@ async def stream_example():
 ### 多模态（图片）
 
 ```python
-from dawn_shuttle_intelligence import Message, TextContent, ImageContent
+from dawn_shuttle.dawn_shuttle_intelligence import Message, TextContent, ImageContent
 
 messages = [
     Message.user([
@@ -102,7 +102,7 @@ messages = [
 DeepSeek 和 Moonshot 基于 `OpenAICompatibleProvider`，只需更改 `base_url`：
 
 ```python
-from dawn_shuttle_intelligence import DeepSeekProvider
+from dawn_shuttle.dawn_shuttle_intelligence import DeepSeekProvider
 
 provider = DeepSeekProvider(
     api_key="your-deepseek-key",
@@ -115,7 +115,7 @@ provider = DeepSeekProvider(
 ### 定义工具
 
 ```python
-from dawn_shuttle_intelligence import Tool, ToolResult, ToolParameter
+from dawn_shuttle.dawn_shuttle_intelligence import Tool, ToolResult, ToolParameter
 
 class WeatherTool(Tool):
     """天气查询工具。"""
@@ -142,7 +142,7 @@ class WeatherTool(Tool):
 ### 使用工具循环
 
 ```python
-from dawn_shuttle_intelligence import (
+from dawn_shuttle.dawn_shuttle_intelligence import (
     OpenAIProvider, Message, GenerateConfig,
     ToolRegistry, run_with_tools,
 )
@@ -165,7 +165,7 @@ print(result.response.text)
 ## 错误处理
 
 ```python
-from dawn_shuttle_intelligence import (
+from dawn_shuttle.dawn_shuttle_intelligence import (
     AIError,
     AuthenticationError,
     RateLimitError,

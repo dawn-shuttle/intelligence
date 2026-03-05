@@ -4,6 +4,13 @@
 
 ## [未发布]
 
+## [0.2.2] - 2026-03-05
+
+### 修复
+
+- **导出缺失的函数** - 在 `__init__.py` 中导出 `generate_text` 和 `stream_text`
+  - 修复导入错误：`from dawn_shuttle.dawn_shuttle_intelligence import generate_text, stream_text`
+
 ## [0.2.1] - 2026-02-23
 
 ### 新增

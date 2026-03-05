@@ -22,8 +22,9 @@ from .src.adapter.moonshot import MoonshotProvider
 from .src.adapter.openai import OpenAIProvider
 from .src.adapter.openai_compatible import OpenAICompatibleProvider
 
-# 核心类型
+# 核心类型和函数
 from .src.core.config import GenerateConfig
+from .src.core.generate import generate_text, stream_text
 from .src.core.error import (
     AIError,
     AuthenticationError,
@@ -66,6 +67,9 @@ __all__ = [
     "MoonshotProvider",
     "OpenAICompatibleProvider",
     "BaseProvider",
+    # 核心函数
+    "generate_text",
+    "stream_text",
     # 核心类型
     "Message",
     "Role",
@@ -104,4 +108,4 @@ __all__ = [
     "TimeoutError",
 ]
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"

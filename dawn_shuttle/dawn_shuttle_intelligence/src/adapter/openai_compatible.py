@@ -227,7 +227,25 @@ class OpenAICompatibleProvider(BaseProvider):
 
         Returns:
             GenerateResponse: 统一格式的响应。
+
+        Raises:
+            ResponseParseError: 响应解析失败。
         """
+        # 检查响应是否有效
+        if response.choices is None or len(response.choices) == 0:
+            # 尝试从原始响应中提取错误信息
+            raw_dict = response.model_dump() if hasattr(response, "model_dump") else {}
+            error_msg = "Empty response from API"
+            if raw_dict.get("error"):
+                error_info = raw_dict["error"]
+                if isinstance(error_info, dict):
+                    error_msg = error_info.get("message", error_msg)
+            raise ResponseParseError(
+                error_msg,
+                provider=self.name,
+                raw_response=raw_dict,
+            )
+
         choice = response.choices[0]
         text: str = choice.message.content or ""
 

@@ -19,6 +19,7 @@ from ..core.error import (
     QuotaExceededError,
     RateLimitError,
     TimeoutError,
+    TokenExpiredError,
 )
 from ..core.types import (
     ImageContent,
@@ -146,6 +147,7 @@ def map_status_code_to_error(
         403: AuthenticationError,
         404: ModelNotFoundError,
         429: RateLimitError,
+        439: TokenExpiredError,  # iflow.cn 自定义状态码: Token 已过期
         500: InternalServerError,
         502: ProviderNotAvailableError,
         503: ProviderNotAvailableError,
@@ -247,6 +249,14 @@ def handle_openai_error(
             error_message,
             provider=provider_name,
             status_code=429,
+            cause=error,
+        )
+
+    if "439" in error_message or "expired" in error_message.lower():
+        return TokenExpiredError(
+            error_message,
+            provider=provider_name,
+            status_code=439,
             cause=error,
         )
 

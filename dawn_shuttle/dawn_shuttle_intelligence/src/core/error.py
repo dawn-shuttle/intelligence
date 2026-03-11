@@ -272,6 +272,14 @@ class AuthenticationError(AIError):
     user_guide = "请检查 API Key 是否正确，或重新生成 API Key。"
 
 
+class TokenExpiredError(AuthenticationError):
+    """Token 已过期。"""
+
+    default_code = ErrorCode.AUTH_EXPIRED
+    default_message = "API Token has expired"
+    user_guide = "您的 API Token 已过期，请访问平台重新获取新的 Token。"
+
+
 class RateLimitError(AIError):
     """速率限制。"""
 
@@ -376,4 +384,5 @@ __all__ = [
     "RateLimitError",
     "ResponseParseError",
     "TimeoutError",
+    "TokenExpiredError",
 ]

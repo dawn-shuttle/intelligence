@@ -125,7 +125,7 @@ class OpenAICompatibleProvider(BaseProvider):
 
         try:
             return self._parse_response(response)
-        except (KeyError, IndexError, AttributeError) as e:
+        except (KeyError, IndexError, AttributeError, TypeError) as e:
             raise ResponseParseError(
                 f"Failed to parse response: {e}",
                 provider=self.name,
@@ -159,7 +159,7 @@ class OpenAICompatibleProvider(BaseProvider):
         async for chunk in stream:
             try:
                 parsed = self._parse_stream_chunk(chunk)
-            except (KeyError, IndexError, AttributeError) as e:
+            except (KeyError, IndexError, AttributeError, TypeError) as e:
                 raise ResponseParseError(
                     f"Failed to parse stream chunk: {e}",
                     provider=self.name,

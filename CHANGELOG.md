@@ -4,6 +4,21 @@
 
 ## [未发布]
 
+## [0.2.3] - 2026-03-11
+
+### 新增
+
+- **TokenExpiredError 错误类型** - 专门处理 Token 过期错误
+  - iflow.cn 使用 439 状态码表示 Token 过期
+  - 提供明确的用户指引：请访问平台重新获取新的 Token
+
+### 优化
+
+- **错误处理优化**
+  - `map_status_code_to_error` 支持 439 状态码
+  - `handle_openai_error` 添加 "expired" 关键字匹配
+  - `_parse_response` 添加 choices 为 None 的检查，返回更有意义的错误信息
+
 ## [0.2.2] - 2026-03-05
 
 ### 修复
@@ -83,6 +98,8 @@
 - `CONTRIBUTING.md` 贡献指南
 - GNU 宽松通用公共许可证 v2.1（LGPL-2.1）
 
-[未发布]: https://github.com/dawn-shuttle/intelligence/compare/v0.2.0...HEAD
+[未发布]: https://github.com/dawn-shuttle/intelligence/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/dawn-shuttle/intelligence/releases/tag/v0.2.3
+[0.2.2]: https://github.com/dawn-shuttle/intelligence/releases/tag/v0.2.2
 [0.2.0]: https://github.com/dawn-shuttle/intelligence/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dawn-shuttle/intelligence/releases/tag/v0.1.0
